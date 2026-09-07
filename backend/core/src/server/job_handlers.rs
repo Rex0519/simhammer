@@ -133,6 +133,56 @@ pub(super) async fn delete_job(path: web::Path<String>, repo: web::Data<JobRepo>
     }
 }
 
+/// Drop Finder results grow their per-source summary on read. Computing it
+/// here rather than at parse time means jobs simmed before the summary existed
+/// get one too, without a stored-result migration.
+fn attach_source_summary(result: &mut Value) {
+    if result.get("type").and_then(|v| v.as_str()) != Some("droptimizer") {
+        return;
+    }
+    if let Some(summary) = crate::drop_summary::summarize(result) {
+        result["source_summary"] = summary;
+    }
+}
+
+#[cfg(test)]
+mod source_summary_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn drop_result(sim_type: &str) -> Value {
+        json!({
+            "type": sim_type,
+            "result_kind": "gear_comparison",
+            "base_dps": 100000.0,
+            "results": [{
+                "name": "Combo 2",
+                "dps": 100100.0,
+                "delta": 100.0,
+                "items": [{"item_id": 1, "ilevel": 720, "name": "Drop",
+                           "encounter": "Boss", "encounter_id": 2611}],
+            }],
+        })
+    }
+
+    // Old droptimizer jobs must gain the summary on read, not at parse time.
+    #[test]
+    fn droptimizer_result_gains_source_summary() {
+        let mut result = drop_result("droptimizer");
+        attach_source_summary(&mut result);
+        assert_eq!(result["source_summary"]["sources"][0]["encounter"], "Boss");
+        assert_eq!(result["source_summary"]["sources"][0]["priority"], 1);
+    }
+
+    // Top Gear shares the gear-comparison shape but has no loot sources.
+    #[test]
+    fn other_sim_types_are_untouched() {
+        let mut result = drop_result("top_gear");
+        attach_source_summary(&mut result);
+        assert!(result.get("source_summary").is_none());
+    }
+}
+
 pub(super) async fn get_sim_status(
     path: web::Path<String>,
     repo: web::Data<JobRepo>,
@@ -156,7 +206,11 @@ pub(super) async fn get_sim_status(
     let parsed_result: Option<Value> = job
         .result_json
         .as_ref()
-        .and_then(|s| serde_json::from_str(s).ok());
+        .and_then(|s| serde_json::from_str(s).ok())
+        .map(|mut r: Value| {
+            attach_source_summary(&mut r);
+            r
+        });
 
     // `None` means the read failed (transient); `Some(n)` is the real count.
     // Non-simmit jobs never have chunks, so they get `Some(0)` (irrelevant to

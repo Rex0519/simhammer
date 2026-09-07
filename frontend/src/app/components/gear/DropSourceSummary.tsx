@@ -1,0 +1,145 @@
+'use client';
+
+import { useState } from 'react';
+import { useLanguage } from '../../lib/i18n';
+import type { DropInstanceEntry, DropSourceEntry, DropSourceSummary } from './topGearResultsTypes';
+
+type View = 'sources' | 'instances';
+
+/** "Where to go next": the Raidbots-style ranked loot sources of a Drop Finder
+ *  run. Expected value, best drop and the chance a successful roll is an
+ *  upgrade all come from the backend; this only lays them out. */
+export default function DropSourceSummaryTable({
+  summary,
+  baseDps,
+  onSelectSource,
+}: {
+  summary: DropSourceSummary;
+  baseDps: number;
+  onSelectSource?: () => void;
+}) {
+  const { t } = useLanguage();
+  const [view, setView] = useState<View>('sources');
+
+  const hasInstances = summary.instances.length > 0;
+  const rows: (DropSourceEntry | DropInstanceEntry)[] =
+    view === 'instances' && hasInstances ? summary.instances : summary.sources;
+  if (rows.length === 0) return null;
+
+  const maxExpected = Math.max(...rows.map((row) => row.expected), 0);
+  const pct = (value: number) => (baseDps > 0 ? (value / baseDps) * 100 : 0);
+
+  return (
+    <div className="card p-5">
+      <div className="mb-4 flex items-center justify-between">
+        <p className="text-xs font-medium uppercase tracking-widest text-muted">
+          {t('dropFinder.summaryTitle')}
+        </p>
+        {hasInstances && (
+          <div className="flex gap-1">
+            {(
+              [
+                ['sources', t('gear.byBoss')],
+                ['instances', t('loot.byInstance')],
+              ] as [View, string][]
+            ).map(([mode, label]) => (
+              <button
+                key={mode}
+                onClick={() => setView(mode)}
+                className={`rounded px-2.5 py-1 text-[13px] font-medium transition-all ${
+                  view === mode
+                    ? 'bg-white text-black'
+                    : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mb-2 grid grid-cols-[2rem_minmax(0,2fr)_minmax(0,1.4fr)_minmax(0,1.6fr)_5rem] gap-3 px-3 text-[11px] uppercase tracking-wider text-on-surface-variant/50">
+        <span>{t('dropFinder.summaryPriority')}</span>
+        <span>{t('dropFinder.summarySource')}</span>
+        <span>{t('dropFinder.summaryExpected')}</span>
+        <span>{t('dropFinder.summaryBest')}</span>
+        <span className="text-right">{t('dropFinder.summaryChance')}</span>
+      </div>
+
+      <div className="space-y-1">
+        {rows.map((row) => {
+          const isSource = 'encounter' in row;
+          const label = isSource ? row.encounter : row.instance_name;
+          const sub = isSource ? row.instance_name : '';
+          const bestItem = isSource ? row.best_item : null;
+          return (
+            <div
+              key={isSource ? row.key : row.instance_name}
+              onClick={onSelectSource}
+              className={`relative overflow-hidden rounded-lg transition-colors ${
+                onSelectSource ? 'cursor-pointer hover:bg-white/[0.04]' : ''
+              }`}
+            >
+              <div
+                className="absolute inset-y-0 left-0 bg-white/[0.02]"
+                style={{ width: `${maxExpected > 0 ? (row.expected / maxExpected) * 100 : 0}%` }}
+              />
+              <div className="relative grid grid-cols-[2rem_minmax(0,2fr)_minmax(0,1.4fr)_minmax(0,1.6fr)_5rem] items-center gap-3 px-3 py-2">
+                <span className="font-mono text-[12px] tabular-nums text-on-surface-variant/50">
+                  {row.priority}
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-[13px] font-medium text-on-surface">{label}</p>
+                  <p className="truncate font-mono text-[11px] text-muted">
+                    {sub ? `${sub} · ` : ''}
+                    {t('dropFinder.summaryItems', { count: row.items })}
+                  </p>
+                </div>
+                <div className="min-w-0">
+                  <span
+                    className={`font-mono text-[13px] font-bold tabular-nums ${
+                      row.expected > 0 ? 'text-emerald-400' : 'text-muted'
+                    }`}
+                  >
+                    {row.expected > 0 ? `+${Math.round(row.expected).toLocaleString()}` : '--'}
+                  </span>
+                  {row.expected > 0 && (
+                    <span className="ml-1.5 font-mono text-[11px] text-muted">
+                      {pct(row.expected).toFixed(2)}%
+                    </span>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  {bestItem && row.best > 0 ? (
+                    <>
+                      <p className="truncate text-[12px] text-on-surface-variant">
+                        {bestItem.name}
+                      </p>
+                      <span className="font-mono text-[11px] font-bold tabular-nums text-emerald-400">
+                        +{Math.round(row.best).toLocaleString()}
+                      </span>
+                    </>
+                  ) : (
+                    <span
+                      className={`font-mono text-[13px] font-bold tabular-nums ${
+                        row.best > 0 ? 'text-emerald-400' : 'text-muted'
+                      }`}
+                    >
+                      {row.best > 0 ? `+${Math.round(row.best).toLocaleString()}` : '--'}
+                    </span>
+                  )}
+                </div>
+                <span className="text-right font-mono text-[13px] tabular-nums text-on-surface-variant">
+                  {Math.round(row.upgrade_chance * 100)}%
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="mt-4 text-[11px] leading-relaxed text-muted">{t('dropFinder.summaryHint')}</p>
+    </div>
+  );
+}

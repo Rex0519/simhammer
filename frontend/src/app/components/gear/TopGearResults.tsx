@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import DpsHeroCard from '../results/DpsHeroCard';
+import DropSourceSummaryTable from './DropSourceSummary';
 import GearOverview from './GearOverview';
 import TopGearRankings from './TopGearRankings';
 import { useEnchantInfo, useGemInfo, useItemInfo } from '../../lib/useItemInfo';
@@ -41,6 +42,7 @@ export default function TopGearResults({
   targetError,
   elapsedTime,
   backLink,
+  sourceSummary,
   sourceJobId,
 }: TopGearResultsProps) {
   const { t } = useLanguage();
@@ -169,6 +171,14 @@ export default function TopGearResults({
             gemInfoMap={gemInfoMap}
           />
         ))}
+
+      {sourceSummary && (
+        <DropSourceSummaryTable
+          summary={sourceSummary}
+          baseDps={baseDps}
+          onSelectSource={() => setGroupMode('encounter')}
+        />
+      )}
 
       <TopGearRankings
         results={activeResults}
