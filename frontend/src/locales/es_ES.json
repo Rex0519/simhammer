@@ -148,6 +148,8 @@
   "slot.offHand": "Mano secundaria",
   "slot.ring1": "Anillo 1",
   "slot.ring2": "Anillo 2",
+  "slot.trinket1": "Abalorio 1",
+  "slot.trinket2": "Abalorio 2",
   "gear.equippedGear": "Equipo actual",
   "gear.bestGear": "Mejor equipo",
   "gear.selectedGear": "Equipo seleccionado",

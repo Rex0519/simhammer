@@ -46,6 +46,27 @@ interface TopGearGroupCardProps {
   t: (key: string, values?: Record<string, string | number>) => string;
 }
 
+/** Localized label key per lock-able slot; mirrors `EnchantSelector.SLOT_DISPLAY`.
+ *  Slots with no key fall back to the English `SLOT_LABELS`. */
+const SLOT_LABEL_KEYS: Record<string, string> = {
+  head: 'slot.head',
+  neck: 'slot.neck',
+  shoulder: 'slot.shoulder',
+  back: 'slot.back',
+  chest: 'slot.chest',
+  wrist: 'slot.wrist',
+  hands: 'slot.hands',
+  waist: 'slot.waist',
+  legs: 'slot.legs',
+  feet: 'slot.feet',
+  finger1: 'slot.ring1',
+  finger2: 'slot.ring2',
+  trinket1: 'slot.trinket1',
+  trinket2: 'slot.trinket2',
+  main_hand: 'slot.mainHand',
+  off_hand: 'slot.offHand',
+};
+
 function canAddSocket(item: ResolvedItem): boolean {
   return (
     item.sockets === 0 &&
@@ -226,7 +247,8 @@ function LockButton({
   onToggle: () => void;
   t: (key: string, values?: Record<string, string | number>) => string;
 }) {
-  const label = SLOT_LABELS[slot] ?? slot;
+  const labelKey = SLOT_LABEL_KEYS[slot];
+  const label = labelKey ? t(labelKey) : (SLOT_LABELS[slot] ?? slot);
   return (
     <button
       type="button"

@@ -148,6 +148,8 @@
   "slot.offHand": "Mano secondaria",
   "slot.ring1": "Anello 1",
   "slot.ring2": "Anello 2",
+  "slot.trinket1": "Monile 1",
+  "slot.trinket2": "Monile 2",
   "gear.equippedGear": "Equipaggiamento indossato",
   "gear.bestGear": "Equipaggiamento migliore",
   "gear.selectedGear": "Equipaggiamento selezionato",

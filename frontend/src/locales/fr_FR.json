@@ -148,6 +148,8 @@
   "slot.offHand": "Main gauche",
   "slot.ring1": "Anneau 1",
   "slot.ring2": "Anneau 2",
+  "slot.trinket1": "Bijou 1",
+  "slot.trinket2": "Bijou 2",
   "gear.equippedGear": "Équipement actuel",
   "gear.bestGear": "Meilleur équipement",
   "gear.selectedGear": "Équipement sélectionné",

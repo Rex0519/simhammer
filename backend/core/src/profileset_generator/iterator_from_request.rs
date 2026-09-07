@@ -253,6 +253,39 @@ mod tests {
     }
 
     #[test]
+    fn envelope_writer_payload_keeps_locked_slots_key() {
+        use crate::test_support::{ensure_game_data_loaded, TestItem};
+        ensure_game_data_loaded();
+
+        // regression for #146: the envelope writers put the request's locked
+        // slots under "locked_slots"; renaming that key would silently unlock
+        // every resumed run, so pin the serialized key here.
+        let equipped = TestItem::new(100).slot("head").equipped().build();
+        let alt = TestItem::new(200).slot("head").build();
+        let envelope = json!({
+            "sim_type": "top_gear",
+            "version": 1,
+            "payload": {
+                "base_profile": "mage=test\n",
+                "items_by_slot": { "head": [equipped, alt] },
+                "selected_items": { "head": ["200::bags:head"] },
+                "locked_slots": ["head"],
+            }
+        });
+        let serialized = envelope.to_string();
+        assert!(
+            serialized.contains("\"locked_slots\""),
+            "envelope must carry the locked_slots key: {serialized}"
+        );
+        let cfg = build_iterator_from_request_json(&serialized).expect("rebuild should succeed");
+        assert!(
+            !cfg.varying_slots.contains(&"head".to_string()),
+            "the locked_slots key must survive the round trip, got {:?}",
+            cfg.varying_slots
+        );
+    }
+
+    #[test]
     fn resume_rebuild_no_catalyst_budget_is_none() {
         use crate::test_support::ensure_game_data_loaded;
         ensure_game_data_loaded();

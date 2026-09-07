@@ -264,6 +264,17 @@ export default function TopGearScreen() {
     return Object.fromEntries(entries);
   }, [resolved]);
 
+  // A slot only gets a lock button while it wears something, so once gear
+  // re-resolves drop locks for slots that no longer have an equipped item —
+  // otherwise an invisible lock keeps pinning that slot.
+  useEffect(() => {
+    if (!resolved) return;
+    setLockedSlots((previous) => {
+      const next = new Set(Array.from(previous).filter((slot) => slot in equippedSlots));
+      return next.size === previous.size ? previous : next;
+    });
+  }, [resolved, equippedSlots]);
+
   const enchantSelectionsArray = useMemo(
     () => serializeSelectionMap<number>(enchantSelections),
     [enchantSelections]

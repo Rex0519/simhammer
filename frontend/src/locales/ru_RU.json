@@ -148,6 +148,8 @@
   "slot.offHand": "Левая рука",
   "slot.ring1": "Кольцо 1",
   "slot.ring2": "Кольцо 2",
+  "slot.trinket1": "Аксессуар 1",
+  "slot.trinket2": "Аксессуар 2",
   "gear.equippedGear": "Надетая экипировка",
   "gear.bestGear": "Лучшая экипировка",
   "gear.selectedGear": "Выбранная экипировка",

@@ -209,6 +209,8 @@
   "slot.offHand": "副手",
   "slot.ring1": "戒指 1",
   "slot.ring2": "戒指 2",
+  "slot.trinket1": "饰品 1",
+  "slot.trinket2": "饰品 2",
   "gear.equippedGear": "当前装备",
   "gear.bestGear": "最佳装备",
   "gear.selectedGear": "已选装备",
