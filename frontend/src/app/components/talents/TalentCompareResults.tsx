@@ -7,7 +7,7 @@ import { specDisplayName } from '../../lib/types';
 import { decodeHeader } from '../../lib/talentDecode';
 import { diffTalentStrings, type TalentDiffEntry } from '../../lib/talentDiff';
 import { useTalentTree } from '../../lib/useTalentTree';
-import { iconProps } from '../../lib/useItemInfo';
+import { iconProps, wowheadHost } from '../../lib/useItemInfo';
 import type { TopGearResult } from '../gear/topGearResultsTypes';
 
 interface TalentCompareResultsProps {
@@ -65,7 +65,9 @@ function CopyTalentButton({ talentString }: { talentString: string }) {
 
 function DiffColumn({ title, entries }: { title: string; entries: TalentDiffEntry[] }) {
   const { locale } = useLanguage();
-  const wowheadHost = locale === 'en_US' || !locale ? 'www' : locale.split('_')[0];
+  // `wowheadHost` maps the locale to a real Wowhead domain; splitting the locale
+  // ourselves produced dead hosts for the ones that don't match (zh_CN -> zh).
+  const host = wowheadHost(locale);
 
   if (entries.length === 0) return null;
 
@@ -80,7 +82,7 @@ function DiffColumn({ title, entries }: { title: string; entries: TalentDiffEntr
             <img {...iconProps(e.icon)} alt="" className="h-5 w-5 shrink-0 rounded" />
             {e.spellId ? (
               <a
-                href={`https://${wowheadHost}.wowhead.com/spell=${e.spellId}`}
+                href={`https://${host}/spell=${e.spellId}`}
                 data-wowhead={`spell=${e.spellId}`}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -157,7 +159,17 @@ export default function TalentCompareResults({ baseDps, results }: TalentCompare
               return (
                 <tr
                   key={row.name}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedName(row.name)}
+                  onKeyDown={(event) => {
+                    // Only the row itself: the copy button inside it handles its
+                    // own Enter/Space.
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    setSelectedName(row.name);
+                  }}
                   className={`cursor-pointer border-b border-outline-variant/5 transition-colors last:border-0 ${
                     isSelected ? 'bg-gold/[0.06]' : 'hover:bg-surface-container-high/50'
                   }`}
@@ -218,7 +230,15 @@ export default function TalentCompareResults({ baseDps, results }: TalentCompare
         {crossSpec ? (
           <p className="text-[13px] text-on-surface-variant">{t('talentCompare.crossSpec')}</p>
         ) : diff == null ? (
-          <p className="text-[13px] text-on-surface-variant">{t('talentCompare.noTalentString')}</p>
+          // No diff has two causes: nothing to decode, or the tree is still on
+          // its way. Only the first is the user's problem.
+          baselineSpecId == null ? (
+            <p className="text-[13px] text-on-surface-variant">
+              {t('talentCompare.noTalentString')}
+            </p>
+          ) : (
+            <p className="text-[13px] text-on-surface-variant">{t('common.loading')}</p>
+          )
         ) : diffIsEmpty ? (
           <p className="text-[13px] text-on-surface-variant">{t('talentCompare.noDiff')}</p>
         ) : (
