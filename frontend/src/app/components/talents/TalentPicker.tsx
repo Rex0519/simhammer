@@ -64,16 +64,19 @@ export default function TalentPicker({
   defaultView = 'collapsed',
   compact = false,
   hideCompare = false,
+  defaultCompare = false,
 }: {
   defaultView?: ViewMode;
   compact?: boolean;
   hideCompare?: boolean;
+  /** Open straight into the multi-build compare grid (Talent Compare page). */
+  defaultCompare?: boolean;
 }) {
   const { t } = useLanguage();
   const { simcInput, selectedTalent, setSelectedTalent, talentBuilds, setTalentBuilds } =
     useSimContext();
   const [viewMode, setViewMode] = useState<ViewMode>(defaultView);
-  const [compareMode, setCompareMode] = useState(false);
+  const [compareMode, setCompareMode] = useState(defaultCompare);
   const [showImport, setShowImport] = useState(false);
   const [importValue, setImportValue] = useState('');
   const [importError, setImportError] = useState('');

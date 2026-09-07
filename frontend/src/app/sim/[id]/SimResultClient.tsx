@@ -10,6 +10,7 @@ import SimStatus from '../../components/results/SimStatus';
 import StatWeightsTable from '../../components/results/StatWeightsTable';
 import TalentTree from '../../components/talents/TalentTree';
 import TopGearResults from '../../components/gear/TopGearResults';
+import TalentCompareResults from '../../components/talents/TalentCompareResults';
 
 import {
   API_URL,
@@ -389,7 +390,9 @@ export default function SimResultClient() {
         </div>
       )}
 
-      {isGearComparisonResult(r) ? (
+      {isGearComparisonResult(r) && r.type === 'talent_compare' ? (
+        <TalentCompareResults baseDps={r.base_dps} results={r.results} />
+      ) : isGearComparisonResult(r) ? (
         <>
           <TopGearResults
             playerName={r.player_name}

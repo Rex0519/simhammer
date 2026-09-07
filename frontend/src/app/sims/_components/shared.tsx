@@ -6,6 +6,7 @@ export const SIM_TYPE_LABELS: Record<string, string> = {
   top_gear: 'Top Gear',
   droptimizer: 'Drop Finder',
   upgrade_compare: 'Crest Upgrades',
+  talent_compare: 'Talent Compare',
 };
 
 export const SIM_TYPE_COLORS: Record<string, string> = {
@@ -13,6 +14,7 @@ export const SIM_TYPE_COLORS: Record<string, string> = {
   stat_weights: 'border-primary/20 bg-primary/10 text-primary',
   top_gear: 'border-tertiary/20 bg-tertiary/10 text-tertiary',
   droptimizer: 'border-secondary/20 bg-secondary/10 text-secondary',
+  talent_compare: 'border-primary/20 bg-primary/10 text-primary',
 };
 
 const STATUS_DOT_COLOR: Record<JobStatus, string> = {

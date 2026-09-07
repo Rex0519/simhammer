@@ -4,7 +4,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::handler_prep::{
-    capped_max_combinations, preprocess_simc_input, serialize_combo_metadata_vec, socketed_item_ids,
+    capped_max_combinations, normalized_talent_builds, preprocess_simc_input,
+    serialize_combo_metadata_vec, socketed_item_ids,
 };
 use super::job_spawn::{
     resolve_provider_for_request, submit_profileset_sim, validate_batch, ProfilesetSubmission,
@@ -20,23 +21,6 @@ use crate::gear_resolver;
 use crate::log_buffer::LogBuffer;
 use crate::profileset_generator;
 use crate::profileset_generator::triage::TRIAGE_THRESHOLD;
-
-fn normalized_talent_builds(talent_builds: &[TalentBuild]) -> Vec<(String, String)> {
-    talent_builds
-        .iter()
-        .map(|tb| {
-            let normalized = crate::talent_normalize::normalize_simc_talents(&format!(
-                "talents={}",
-                tb.talent_string
-            ));
-            let ts = normalized
-                .strip_prefix("talents=")
-                .unwrap_or(&tb.talent_string)
-                .to_string();
-            (tb.name.clone(), ts)
-        })
-        .collect()
-}
 
 fn build_items_by_slot(
     req: &TopGearRequest,

@@ -23,6 +23,7 @@ mod sim_handlers;
 mod simc_input;
 mod streaming_top_gear;
 mod system_handlers;
+mod talent_compare_handlers;
 mod top_gear_handlers;
 mod types;
 mod upgrade_compare;

@@ -18,6 +18,7 @@ use super::roster_run_handlers;
 use super::route_handlers;
 use super::sim_handlers;
 use super::system_handlers;
+use super::talent_compare_handlers;
 use super::top_gear_handlers;
 use super::upgrade_compare;
 
@@ -42,6 +43,10 @@ pub(super) fn configure(cfg: &mut web::ServiceConfig) {
         .route(
             "/api/top-gear/resolve-drops",
             web::post().to(resolve_drops::resolve_drops),
+        )
+        .route(
+            "/api/talent-compare/sim",
+            web::post().to(talent_compare_handlers::create_talent_compare_sim),
         )
         .route(
             "/api/droptimizer/sim",

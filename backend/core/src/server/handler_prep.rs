@@ -20,6 +20,28 @@ pub(super) fn preprocess_simc_input(
     crate::talent_normalize::normalize_simc_talents(&with_overrides)
 }
 
+/// Normalize each talent build's string the same way `preprocess_simc_input`
+/// normalizes the base actor's, returning the `(name, talent_string)` pairs the
+/// profileset generator takes. Shared by Top Gear and Talent Compare.
+pub(super) fn normalized_talent_builds(
+    talent_builds: &[crate::server::types::TalentBuild],
+) -> Vec<(String, String)> {
+    talent_builds
+        .iter()
+        .map(|tb| {
+            let normalized = crate::talent_normalize::normalize_simc_talents(&format!(
+                "talents={}",
+                tb.talent_string
+            ));
+            let ts = normalized
+                .strip_prefix("talents=")
+                .unwrap_or(&tb.talent_string)
+                .to_string();
+            (tb.name.clone(), ts)
+        })
+        .collect()
+}
+
 /// Clamp a client-requested max-combinations against the server-configured cap.
 /// `MAX_COMBINATIONS == 0` means "unlimited" on the server side.
 pub(super) fn capped_max_combinations(requested: Option<usize>) -> Option<usize> {
