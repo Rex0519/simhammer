@@ -26,6 +26,7 @@ pub enum SimMode {
     TopGear,
     Droptimizer,
     UpgradeCompare,
+    TalentCompare,
 }
 
 impl SimMode {
@@ -38,6 +39,7 @@ impl SimMode {
             SimMode::TopGear => "top_gear",
             SimMode::Droptimizer => "droptimizer",
             SimMode::UpgradeCompare => "upgrade_compare",
+            SimMode::TalentCompare => "talent_compare",
         }
     }
 
@@ -48,6 +50,7 @@ impl SimMode {
             "top_gear" => Some(SimMode::TopGear),
             "droptimizer" => Some(SimMode::Droptimizer),
             "upgrade_compare" => Some(SimMode::UpgradeCompare),
+            "talent_compare" => Some(SimMode::TalentCompare),
             _ => None,
         }
     }
@@ -58,9 +61,10 @@ impl SimMode {
     pub fn result_kind(self) -> ResultKind {
         match self {
             SimMode::Quick | SimMode::StatWeights => ResultKind::SingleActor,
-            SimMode::TopGear | SimMode::Droptimizer | SimMode::UpgradeCompare => {
-                ResultKind::GearComparison
-            }
+            SimMode::TopGear
+            | SimMode::Droptimizer
+            | SimMode::UpgradeCompare
+            | SimMode::TalentCompare => ResultKind::GearComparison,
         }
     }
 }
@@ -346,9 +350,25 @@ mod sim_mode_tests {
             SimMode::TopGear,
             SimMode::Droptimizer,
             SimMode::UpgradeCompare,
+            SimMode::TalentCompare,
         ] {
             assert_eq!(SimMode::from_wire(m.as_wire()), Some(m));
         }
+    }
+
+    // Guards the Talent Compare wire name: the frontend posts/stores
+    // `talent_compare`, so a rename here silently breaks history and routing.
+    #[test]
+    fn talent_compare_round_trips_wire_name() {
+        assert_eq!(SimMode::TalentCompare.as_wire(), "talent_compare");
+        assert_eq!(
+            SimMode::from_wire("talent_compare"),
+            Some(SimMode::TalentCompare)
+        );
+        assert_eq!(
+            SimMode::TalentCompare.result_kind(),
+            ResultKind::GearComparison
+        );
     }
 
     #[test]

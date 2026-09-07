@@ -188,6 +188,16 @@ pub struct TopGearRequest {
     pub options: SimOptions,
 }
 
+/// Talent Compare: same gear, several talent loadouts. Gear-free Top Gear run.
+#[derive(Debug, Deserialize)]
+pub struct TalentCompareRequest {
+    pub simc_input: String,
+    #[serde(default)]
+    pub talent_builds: Vec<TalentBuild>,
+    #[serde(flatten)]
+    pub options: SimOptions,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct DroptimizerRequest {
     pub simc_input: String,

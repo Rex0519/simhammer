@@ -1074,6 +1074,70 @@ main_hand=,id=200\n";
         assert!(input.contains("talents=AAAA") || input.contains("talents=BBBB"));
     }
 
+    // Regression: Talent Compare runs Top Gear generation with zero gear
+    // alternatives, so the only axis is talents. N builds must yield the base
+    // actor plus N-1 profilesets, each metadata row tagged with its build name.
+    #[test]
+    fn talent_only_input_emits_one_profileset_per_extra_build() {
+        ensure_game_data_loaded();
+        let base_profile = "mage=test\nspec=frost\nhead=,id=100\nmain_hand=,id=200\n";
+
+        let talents = vec![
+            ("Build A".to_string(), "AAAA".to_string()),
+            ("Build B".to_string(), "BBBB".to_string()),
+            ("Build C".to_string(), "CCCC".to_string()),
+        ];
+
+        let (input, count, metadata) = generate_top_gear_input_with_talents(
+            base_profile,
+            &HashMap::new(),
+            &HashMap::new(),
+            Some(50),
+            &talents,
+            None,
+            &GemEnchantOptions::default(),
+        )
+        .unwrap();
+
+        assert!(
+            input.contains("talents=AAAA"),
+            "base actor must carry the first build's talents:\n{input}"
+        );
+        let profileset_talent_lines: Vec<&str> = input
+            .lines()
+            .filter(|l| l.starts_with("profileset.\"Combo ") && l.contains("+=talents="))
+            .collect();
+        assert_eq!(
+            profileset_talent_lines.len(),
+            2,
+            "expected one profileset per extra build, got {profileset_talent_lines:?}"
+        );
+        assert_eq!(count, 2, "combo_count must match the emitted profilesets");
+
+        assert_eq!(
+            metadata.len(),
+            3,
+            "baseline + 2 profilesets must all have metadata: {metadata:?}"
+        );
+        // result_parser lifts talent_build off `items[0]`, so the first row of
+        // every combo has to carry the build name it was generated for.
+        let mut build_names: Vec<String> = metadata
+            .iter()
+            .map(|(combo_name, items)| {
+                items
+                    .first()
+                    .and_then(|it| it.get("talent_build"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_else(|| {
+                        panic!("{combo_name} metadata is missing talent_build: {items:?}")
+                    })
+                    .to_string()
+            })
+            .collect();
+        build_names.sort();
+        assert_eq!(build_names, vec!["Build A", "Build B", "Build C"]);
+    }
+
     #[test]
     fn top_gear_unique_equipped_filters_same_id_in_paired_slots() {
         ensure_game_data_loaded();
