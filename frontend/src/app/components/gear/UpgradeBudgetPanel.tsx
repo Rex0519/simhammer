@@ -5,13 +5,10 @@ import { useEffect, useRef, useState } from 'react';
 import { API_URL } from '../../lib/api';
 import { useLanguage } from '../../lib/i18n';
 import { iconProps } from '../../lib/useItemInfo';
-
-interface CurrencyMeta {
-  id: number;
-  amount: number;
-  name: string;
-  icon: string;
-}
+import {
+  storeUpgradeCurrencies,
+  type UpgradeCurrencyMeta as CurrencyMeta,
+} from '../../lib/upgradeCurrencies';
 
 /**
  * Editable crest budget for "Sim Highest Upgrade" (#144). Currencies and their
@@ -32,6 +29,10 @@ export default function UpgradeBudgetPanel({
   const { t } = useLanguage();
   const [currencies, setCurrencies] = useState<Record<string, CurrencyMeta> | null>(null);
   const [loading, setLoading] = useState(false);
+  // Raw text per currency while the field is being edited, so clearing it does
+  // not snap to "0" and block retyping. Dropped on blur, when the coerced
+  // number in `budget` takes over again.
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   // Prefill must not fight the user: once they have edited an amount for this
   // export, later re-fetches keep their number.
   const prefilledForRef = useRef<string | null>(null);
@@ -61,6 +62,8 @@ export default function UpgradeBudgetPanel({
         const result: { currencies?: Record<string, CurrencyMeta> } = await res.json();
         if (cancelled) return;
         setCurrencies(result.currencies ?? {});
+        // The results page labels its spend badges from this cache (#144).
+        storeUpgradeCurrencies(result.currencies ?? {});
       } catch {
         if (!cancelled) setCurrencies({});
       } finally {
@@ -122,12 +125,21 @@ export default function UpgradeBudgetPanel({
                 type="number"
                 min={0}
                 aria-label={c.name}
-                value={budget[String(c.id)] ?? 0}
+                value={drafts[String(c.id)] ?? String(budget[String(c.id)] ?? 0)}
                 onChange={(event) => {
-                  const value = parseInt(event.target.value, 10);
+                  const raw = event.target.value;
+                  setDrafts((prev) => ({ ...prev, [String(c.id)]: raw }));
+                  const value = parseInt(raw, 10);
                   onBudgetChange({
                     ...budget,
                     [String(c.id)]: Number.isNaN(value) || value < 0 ? 0 : value,
+                  });
+                }}
+                onBlur={() => {
+                  setDrafts((prev) => {
+                    const next = { ...prev };
+                    delete next[String(c.id)];
+                    return next;
                   });
                 }}
                 className="w-16 rounded-md border border-outline-variant/30 bg-surface-container px-1 py-0.5 text-center text-[13px] font-bold tabular-nums text-on-surface outline-none focus:border-gold/40"

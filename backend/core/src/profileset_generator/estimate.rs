@@ -30,13 +30,27 @@ fn gear_axis_size(
 ) -> u64 {
     // For each slot in selected_items: number of selected alternatives + 1 (equipped).
     // For each slot NOT in selected_items: 1 (equipped only).
+    // With an upgrade budget (#144) `build_slot_candidates` additionally carries
+    // one upgrade variant per base candidate — the equipped item's included —
+    // so a budgeted slot is up to twice as wide and varies even with nothing
+    // selected.
     let mut prod: u64 = 1;
-    for slot in items_by_slot.keys() {
+    for (slot, items) in items_by_slot {
         let selected = selected_items.get(slot).map(|v| v.len()).unwrap_or(0);
-        let axis = if selected == 0 {
+        let base = selected as u64 + 1;
+        let variants = items
+            .iter()
+            .filter(|it| {
+                it.get("upgraded")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+            })
+            .count() as u64;
+        // At most one variant per base candidate can be a candidate itself.
+        let axis = if variants == 0 && selected == 0 {
             1
         } else {
-            selected as u64 + 1
+            base.saturating_add(variants.min(base))
         };
         prod = prod.saturating_mul(axis);
     }
@@ -152,6 +166,142 @@ mod tests {
             3,
         );
         assert_eq!(count, 2 * 3);
+    }
+
+    fn make_variant(item_id: u64, ilvl: u64) -> Value {
+        json!({
+            "item_id": item_id,
+            "simc_string": format!(",id={}", item_id),
+            "upgraded": true,
+            "upgrade_cost": { "3444": 20 },
+            "uid": format!("{item_id}::bags:head:up{ilvl}"),
+        })
+    }
+
+    /// Guards #144: with a budget, `build_slot_candidates` force-includes the
+    /// equipped item's upgrade variant, so a slot varies (axis 2) even with
+    /// nothing selected. Reporting 1 makes the `MAX_COMBINATIONS` pre-gate blind.
+    #[test]
+    fn budgeted_slot_varies_without_any_selection() {
+        let mut items = HashMap::new();
+        items.insert("head".to_string(), vec![make_item(1), make_variant(1, 302)]);
+        let count = estimate_top_gear_combo_count(
+            &items,
+            &HashMap::new(),
+            &HashMap::new(),
+            &[],
+            &HashSet::new(),
+            1,
+        );
+        assert_eq!(
+            count, 2,
+            "equipped + its affordable upgrade is a 2-wide axis"
+        );
+    }
+
+    /// Guards #144: the estimate is a pre-gate, so it must stay an *upper*
+    /// bound on what the iterator actually emits for a budgeted request.
+    #[test]
+    fn budgeted_estimate_is_not_below_the_exact_iterator_count() {
+        use crate::test_support::{ensure_game_data_loaded, TestItem};
+        ensure_game_data_loaded();
+
+        // uid shape mirrors `selection::make_item_uid`: id:bonuses:origin:slot.
+        let uid = |item: &Value| {
+            format!(
+                "{}::{}:{}",
+                item["item_id"].as_u64().unwrap(),
+                item["origin"].as_str().unwrap(),
+                item["slot"].as_str().unwrap()
+            )
+        };
+        let variant = |base: &Value, ilvl: u64| {
+            let mut v = base.clone();
+            v["uid"] = json!(format!("{}:up{}", uid(base), ilvl));
+            v["is_equipped"] = json!(false);
+            v["upgraded"] = json!(true);
+            v["upgrade_cost"] = json!({ "3444": 20 });
+            v
+        };
+
+        let mut items: HashMap<String, Vec<Value>> = HashMap::new();
+        let mut selected: HashMap<String, Vec<String>> = HashMap::new();
+        for (slot, base_id, alt_id) in [("head", 101u64, 102u64), ("chest", 201, 202)] {
+            let equipped = TestItem::new(base_id).slot(slot).equipped().build();
+            let alt = TestItem::new(alt_id).slot(slot).build();
+            selected.insert(slot.to_string(), vec![uid(&alt)]);
+            items.insert(
+                slot.to_string(),
+                vec![
+                    equipped.clone(),
+                    variant(&equipped, 302),
+                    alt.clone(),
+                    variant(&alt, 302),
+                ],
+            );
+        }
+
+        let budget: HashMap<u64, u64> = [(3444u64, 10_000u64)].into_iter().collect();
+        let exact = crate::profileset_generator::count_top_gear_combos_with_talents(
+            "",
+            &items,
+            &selected,
+            Some(1_000_000),
+            &[],
+            None,
+            &crate::profileset_generator::GemEnchantOptions::default(),
+            Some(&budget),
+        )
+        .expect("count must not trip the pre-gate at this limit");
+
+        let est = estimate_top_gear_combo_count(
+            &items,
+            &selected,
+            &HashMap::new(),
+            &[],
+            &HashSet::new(),
+            1,
+        );
+        assert!(
+            est >= exact as u64,
+            "estimate must bound the iterator (est={est}, exact={exact})"
+        );
+    }
+
+    /// Guards #144: an over-limit budgeted request must be rejected by the
+    /// analytic pre-gate instead of walking the whole space.
+    #[test]
+    fn pre_gate_rejects_over_limit_budgeted_request() {
+        use crate::test_support::TestItem;
+
+        let mut items: HashMap<String, Vec<Value>> = HashMap::new();
+        for (i, slot) in crate::types::class_data::GEAR_SLOTS.iter().enumerate() {
+            let id = 1000 + i as u64;
+            let mut equipped = TestItem::new(id).slot(slot).equipped().build();
+            equipped["uid"] = json!(format!("{id}::equipped:{slot}"));
+            let mut up = equipped.clone();
+            up["uid"] = json!(format!("{id}::equipped:{slot}:up302"));
+            up["is_equipped"] = json!(false);
+            up["upgraded"] = json!(true);
+            up["upgrade_cost"] = json!({ "3444": 20 });
+            items.insert(slot.to_string(), vec![equipped, up]);
+        }
+
+        let budget: HashMap<u64, u64> = [(3444u64, 10_000u64)].into_iter().collect();
+        let res = crate::profileset_generator::count_top_gear_combos_with_talents(
+            "",
+            &items,
+            &HashMap::new(),
+            Some(1000),
+            &[],
+            None,
+            &crate::profileset_generator::GemEnchantOptions::default(),
+            Some(&budget),
+        );
+        assert!(
+            res.is_err(),
+            "2^16 budgeted combos must trip the 1000-combo pre-gate, got {res:?}"
+        );
     }
 
     #[test]

@@ -941,10 +941,7 @@ pub fn crafted_embellishments() -> &'static [EmbellishmentInfo] {
                 else {
                     continue;
                 };
-                for sid in slot_ids
-                    .iter()
-                    .filter_map(|s| s.get("id").and_then(|i| i.as_u64()))
-                {
+                for sid in slot_ids.iter().filter_map(|s| s.get("id").and_then(|i| i.as_u64())) {
                     if let Some(rids) = emb_slots.get(&sid) {
                         for rid in rids {
                             items_by_reagent.entry(*rid).or_default().push(*item_id);
@@ -968,11 +965,7 @@ pub fn crafted_embellishments() -> &'static [EmbellishmentInfo] {
                 // process restarts (HashMap iteration order is otherwise unstable).
                 tiers.sort_by_key(|(rid, r)| {
                     (
-                        std::cmp::Reverse(
-                            r.get("craftingQuality")
-                                .and_then(|q| q.as_u64())
-                                .unwrap_or(0),
-                        ),
+                        std::cmp::Reverse(r.get("craftingQuality").and_then(|q| q.as_u64()).unwrap_or(0)),
                         **rid,
                     )
                 });
@@ -1804,7 +1797,12 @@ fn affordable_upgrade_variant(item: &Value, budget: &HashMap<u64, u64>) -> Optio
         {
             continue;
         }
-        let target_bonus_id = opt.get("bonus_id").and_then(|v| v.as_u64())?;
+        // A malformed option must skip this level, not abandon an already-found
+        // `best` and return None for the whole item.
+        let target_bonus_id = match opt.get("bonus_id").and_then(|v| v.as_u64()) {
+            Some(id) => id,
+            None => continue,
+        };
         best = Some((target_bonus_id, cost));
     }
     let (target_bonus_id, cost) = best?;
@@ -2470,11 +2468,7 @@ mod tests {
         for e in embs {
             assert!(!e.name.is_empty(), "embellishment {} has no name", e.id);
             assert!(!e.bonus_ids.is_empty(), "{} has no bonus ids", e.name);
-            assert!(
-                !e.item_ids.is_empty(),
-                "{} applies to no crafted item",
-                e.name
-            );
+            assert!(!e.item_ids.is_empty(), "{} applies to no crafted item", e.name);
         }
         // Deterministic order for the API response.
         let names: Vec<&str> = embs.iter().map(|e| e.name.as_str()).collect();
@@ -2491,16 +2485,8 @@ mod tests {
         for e in crafted_embellishments() {
             for bid in &e.bonus_ids {
                 if let Some(b) = get_bonus(*bid) {
-                    assert!(
-                        b.get("socket").is_none(),
-                        "bonus {bid} of {} adds sockets",
-                        e.name
-                    );
-                    assert!(
-                        b.get("itemLevel").is_none(),
-                        "bonus {bid} of {} changes ilevel",
-                        e.name
-                    );
+                    assert!(b.get("socket").is_none(), "bonus {bid} of {} adds sockets", e.name);
+                    assert!(b.get("itemLevel").is_none(), "bonus {bid} of {} changes ilevel", e.name);
                 }
             }
         }
@@ -2548,11 +2534,7 @@ mod tests {
         for (name, tiers) in by_name {
             let first: Vec<u64> = bonus_ids_of(tiers[0]);
             for t in &tiers[1..] {
-                assert_eq!(
-                    bonus_ids_of(t),
-                    first,
-                    "tiers of {name} diverge in craftingBonusIds"
-                );
+                assert_eq!(bonus_ids_of(t), first, "tiers of {name} diverge in craftingBonusIds");
             }
         }
     }
