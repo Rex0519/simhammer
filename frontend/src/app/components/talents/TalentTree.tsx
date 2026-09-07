@@ -17,7 +17,7 @@ import {
 } from '../../lib/talentRules';
 import { useTalentTree } from '../../lib/useTalentTree';
 import type { TalentNode, TalentTreeData } from '../../lib/useTalentTree';
-import { iconHrefProps } from '../../lib/useItemInfo';
+import { iconHrefProps, wowheadHost } from '../../lib/useItemInfo';
 import { useLanguage } from '../../lib/i18n';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 
@@ -556,7 +556,7 @@ function TalentNodeSvg({
           height={NODE_SIZE}
         >
           <a
-            href={`https://${locale === 'en_US' || !locale ? 'www' : locale.split('_')[0]}.wowhead.com/spell=${spellId}`}
+            href={`https://${wowheadHost(locale)}/spell=${spellId}`}
             data-wowhead={`spell=${spellId}`}
             style={{ display: 'block', width: '100%', height: '100%' }}
             target="_blank"

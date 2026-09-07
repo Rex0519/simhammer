@@ -443,11 +443,16 @@ const WOWHEAD_DOMAINS: Record<string, string> = {
   it_IT: 'it.wowhead.com',
   pt_BR: 'pt.wowhead.com',
   ru_RU: 'ru.wowhead.com',
+  zh_CN: 'cn.wowhead.com',
 };
 
+/** Wowhead host for a locale (e.g. `cn.wowhead.com`); falls back to the English site. */
+export function wowheadHost(locale?: string): string {
+  return (locale && WOWHEAD_DOMAINS[locale]) || 'www.wowhead.com';
+}
+
 export function getWowheadUrl(itemId: number, locale?: string): string {
-  const domain = (locale && WOWHEAD_DOMAINS[locale]) || 'www.wowhead.com';
-  return `https://${domain}/item=${itemId}`;
+  return `https://${wowheadHost(locale)}/item=${itemId}`;
 }
 
 /** Normalize the two gem-id shapes (legacy `gem_id`, full `gem_ids` array) into one
