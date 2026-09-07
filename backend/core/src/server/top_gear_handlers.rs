@@ -49,7 +49,13 @@ fn build_items_by_slot(
     };
 
     if req.max_upgrade {
-        items_by_slot = game_data::upgrade_items_by_slot(&items_by_slot);
+        items_by_slot = match req.upgrade_budget.as_ref() {
+            // With a crest budget each item is offered at its current level plus
+            // the best level it can afford; without one, everything jumps to the
+            // track max for free (the pre-#144 behaviour).
+            Some(budget) => game_data::upgrade_items_by_slot_within_budget(&items_by_slot, budget),
+            None => game_data::upgrade_items_by_slot(&items_by_slot),
+        };
     }
 
     if req.copy_enchants {
@@ -71,7 +77,9 @@ pub(super) async fn create_top_gear_sim(
     registry: web::Data<Arc<ProviderRegistry>>,
     local_queue: web::Data<crate::compute::local::LocalSimQueue>,
 ) -> HttpResponse {
-    let raw_input = if req.max_upgrade {
+    // A budgeted run keeps the equipped gear at its current level — the upgrades
+    // are per-item variants the budget pays for, not a free rebase of the profile.
+    let raw_input = if req.max_upgrade && req.upgrade_budget.is_none() {
         game_data::upgrade_simc_input(&req.simc_input)
     } else {
         req.simc_input.clone()
@@ -118,6 +126,7 @@ pub(super) async fn create_top_gear_sim(
         &talent_builds,
         catalyst_charges,
         &gem_opts,
+        req.upgrade_budget.as_ref(),
     ) {
         Ok(0) => {
             return HttpResponse::BadRequest().json(json!({
@@ -210,6 +219,7 @@ pub(super) async fn create_top_gear_sim(
             &talent_builds,
             catalyst_charges,
             &gem_opts,
+            req.upgrade_budget.as_ref(),
         ) {
             Ok(r) => r,
             Err(e) => {
@@ -242,6 +252,7 @@ pub(super) async fn create_top_gear_sim(
         "max_colors": req.max_colors,
         "talent_builds": talent_builds,
         "catalyst_charges": catalyst_charges,
+        "upgrade_budget": req.upgrade_budget,
         "spec": req.options.spec_override,
         "base_profile": base_profile,
         "max_combinations": max_combinations,
@@ -270,7 +281,9 @@ pub(super) async fn create_top_gear_sim(
     .await
 }
 pub(super) async fn get_top_gear_combo_count(req: web::Json<TopGearRequest>) -> HttpResponse {
-    let raw_input = if req.max_upgrade {
+    // A budgeted run keeps the equipped gear at its current level — the upgrades
+    // are per-item variants the budget pays for, not a free rebase of the profile.
+    let raw_input = if req.max_upgrade && req.upgrade_budget.is_none() {
         game_data::upgrade_simc_input(&req.simc_input)
     } else {
         req.simc_input.clone()
@@ -314,6 +327,7 @@ pub(super) async fn get_top_gear_combo_count(req: web::Json<TopGearRequest>) -> 
         &talent_builds,
         catalyst_charges,
         &gem_opts,
+        req.upgrade_budget.as_ref(),
     ) {
         Ok(count) => HttpResponse::Ok().json(json!({ "combo_count": count })),
         Err(e) => {

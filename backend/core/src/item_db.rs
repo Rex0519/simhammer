@@ -941,7 +941,10 @@ pub fn crafted_embellishments() -> &'static [EmbellishmentInfo] {
                 else {
                     continue;
                 };
-                for sid in slot_ids.iter().filter_map(|s| s.get("id").and_then(|i| i.as_u64())) {
+                for sid in slot_ids
+                    .iter()
+                    .filter_map(|s| s.get("id").and_then(|i| i.as_u64()))
+                {
                     if let Some(rids) = emb_slots.get(&sid) {
                         for rid in rids {
                             items_by_reagent.entry(*rid).or_default().push(*item_id);
@@ -965,7 +968,11 @@ pub fn crafted_embellishments() -> &'static [EmbellishmentInfo] {
                 // process restarts (HashMap iteration order is otherwise unstable).
                 tiers.sort_by_key(|(rid, r)| {
                     (
-                        std::cmp::Reverse(r.get("craftingQuality").and_then(|q| q.as_u64()).unwrap_or(0)),
+                        std::cmp::Reverse(
+                            r.get("craftingQuality")
+                                .and_then(|q| q.as_u64())
+                                .unwrap_or(0),
+                        ),
                         **rid,
                     )
                 });
@@ -1719,6 +1726,158 @@ pub fn upgrade_items_by_slot(
     result
 }
 
+/// Budget-aware variant of [`upgrade_items_by_slot`] for Top Gear's crest budget.
+///
+/// `upgrade_items_by_slot` replaces every item with its track max for free. Here
+/// each item is instead *offered twice*: at its current level, plus one variant
+/// at the highest level its own upgrade cost fits inside `budget`
+/// (currency id -> amount owned). The variant carries `upgraded: true`, the
+/// `upgrade_cost` it would spend, and a `:up<ilvl>` uid suffix so it stays
+/// distinct from the item it came from. Whether a *set* of those variants is
+/// affordable together is the gear validator's job
+/// (`constraints::validate_upgrade_budget`).
+///
+/// Items already at their track max, off-track items, and items whose next step
+/// costs a currency absent from `budget` are passed through unchanged — a
+/// missing currency means "none owned", not "free".
+pub fn upgrade_items_by_slot_within_budget(
+    items_by_slot: &HashMap<String, Vec<Value>>,
+    budget: &HashMap<u64, u64>,
+) -> HashMap<String, Vec<Value>> {
+    let mut result = HashMap::new();
+
+    for (slot, slot_items) in items_by_slot {
+        let mut new_items: Vec<Value> = Vec::with_capacity(slot_items.len());
+        for item in slot_items {
+            new_items.push(item.clone());
+            if let Some(variant) = affordable_upgrade_variant(item, budget) {
+                new_items.push(variant);
+            }
+        }
+        result.insert(slot.clone(), new_items);
+    }
+    result
+}
+
+/// The single best upgrade of `item` that `budget` pays for on its own, or None.
+fn affordable_upgrade_variant(item: &Value, budget: &HashMap<u64, u64>) -> Option<Value> {
+    let old_bonus_ids: Vec<u64> = item
+        .get("bonus_ids")
+        .and_then(|b| b.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_u64()).collect())
+        .unwrap_or_default();
+    let options = get_upgrade_options(&old_bonus_ids)?;
+
+    // Current position on the track, and what has already been paid for it.
+    let current = options
+        .iter()
+        .find(|o| match o.get("bonus_id").and_then(|v| v.as_u64()) {
+            Some(bid) => old_bonus_ids.contains(&bid),
+            None => false,
+        })?;
+    let current_bonus_id = current.get("bonus_id").and_then(|v| v.as_u64())?;
+    let current_level = current.get("level").and_then(|v| v.as_u64())?;
+    let current_cumulative = cumulative_costs(current);
+
+    // Highest level whose remaining cost fits every currency it needs.
+    let mut best: Option<(u64, HashMap<u64, u64>)> = None;
+    for opt in &options {
+        let level = opt.get("level").and_then(|v| v.as_u64()).unwrap_or(0);
+        if level <= current_level {
+            continue;
+        }
+        let target_cumulative = cumulative_costs(opt);
+        let mut cost: HashMap<u64, u64> = HashMap::new();
+        for (cid, amount) in &target_cumulative {
+            let delta = amount.saturating_sub(current_cumulative.get(cid).copied().unwrap_or(0));
+            if delta > 0 {
+                cost.insert(*cid, delta);
+            }
+        }
+        if cost.is_empty() {
+            continue;
+        }
+        // Multi-currency paths must fit in every currency they touch.
+        if !cost
+            .iter()
+            .all(|(cid, amount)| budget.get(cid).copied().unwrap_or(0) >= *amount)
+        {
+            continue;
+        }
+        let target_bonus_id = opt.get("bonus_id").and_then(|v| v.as_u64())?;
+        best = Some((target_bonus_id, cost));
+    }
+    let (target_bonus_id, cost) = best?;
+
+    let new_bonus_ids: Vec<u64> = old_bonus_ids
+        .iter()
+        .map(|bid| {
+            if *bid == current_bonus_id {
+                target_bonus_id
+            } else {
+                *bid
+            }
+        })
+        .collect();
+
+    let mut variant = item.clone();
+    variant["bonus_ids"] = serde_json::json!(new_bonus_ids);
+    // The variant is a change from what the character wears, never the baseline.
+    variant["is_equipped"] = serde_json::json!(false);
+    variant["upgraded"] = serde_json::json!(true);
+    let cost_json: serde_json::Map<String, Value> = cost
+        .iter()
+        .map(|(cid, amount)| (cid.to_string(), serde_json::json!(amount)))
+        .collect();
+    variant["upgrade_cost"] = Value::Object(cost_json);
+
+    if let Some(simc) = item.get("simc_string").and_then(|s| s.as_str()) {
+        let new_simc = RE_BONUS_ID
+            .replace(simc, |caps: &regex::Captures| {
+                let raw = &caps[1];
+                let sep = if raw.contains('/') { "/" } else { ":" };
+                format!(
+                    "bonus_id={}",
+                    new_bonus_ids
+                        .iter()
+                        .map(|id| id.to_string())
+                        .collect::<Vec<_>>()
+                        .join(sep)
+                )
+            })
+            .to_string();
+        variant["simc_string"] = serde_json::json!(new_simc);
+    }
+
+    let new_ilevel = resolve_bonuses(&new_bonus_ids)
+        .ilevel
+        .or_else(|| item.get("ilevel").and_then(|v| v.as_u64()))
+        .unwrap_or(0);
+    variant["ilevel"] = serde_json::json!(new_ilevel);
+
+    // Selection and combo identity key off the uid, so the variant needs its own.
+    if let Some(uid) = item.get("uid").and_then(|v| v.as_str()) {
+        if !uid.is_empty() {
+            variant["uid"] = serde_json::json!(format!("{}:up{}", uid, new_ilevel));
+        }
+    }
+
+    Some(variant)
+}
+
+/// `cumulative_costs` of one `get_upgrade_options` entry as currency id -> amount.
+fn cumulative_costs(option: &Value) -> HashMap<u64, u64> {
+    option
+        .get("cumulative_costs")
+        .and_then(|c| c.as_object())
+        .map(|m| {
+            m.iter()
+                .filter_map(|(k, v)| Some((k.parse::<u64>().ok()?, v.as_u64()?)))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub fn apply_copy_enchants(
     items_by_slot: &HashMap<String, Vec<Value>>,
 ) -> HashMap<String, Vec<Value>> {
@@ -2311,7 +2470,11 @@ mod tests {
         for e in embs {
             assert!(!e.name.is_empty(), "embellishment {} has no name", e.id);
             assert!(!e.bonus_ids.is_empty(), "{} has no bonus ids", e.name);
-            assert!(!e.item_ids.is_empty(), "{} applies to no crafted item", e.name);
+            assert!(
+                !e.item_ids.is_empty(),
+                "{} applies to no crafted item",
+                e.name
+            );
         }
         // Deterministic order for the API response.
         let names: Vec<&str> = embs.iter().map(|e| e.name.as_str()).collect();
@@ -2328,8 +2491,16 @@ mod tests {
         for e in crafted_embellishments() {
             for bid in &e.bonus_ids {
                 if let Some(b) = get_bonus(*bid) {
-                    assert!(b.get("socket").is_none(), "bonus {bid} of {} adds sockets", e.name);
-                    assert!(b.get("itemLevel").is_none(), "bonus {bid} of {} changes ilevel", e.name);
+                    assert!(
+                        b.get("socket").is_none(),
+                        "bonus {bid} of {} adds sockets",
+                        e.name
+                    );
+                    assert!(
+                        b.get("itemLevel").is_none(),
+                        "bonus {bid} of {} changes ilevel",
+                        e.name
+                    );
                 }
             }
         }
@@ -2377,7 +2548,11 @@ mod tests {
         for (name, tiers) in by_name {
             let first: Vec<u64> = bonus_ids_of(tiers[0]);
             for t in &tiers[1..] {
-                assert_eq!(bonus_ids_of(t), first, "tiers of {name} diverge in craftingBonusIds");
+                assert_eq!(
+                    bonus_ids_of(t),
+                    first,
+                    "tiers of {name} diverge in craftingBonusIds"
+                );
             }
         }
     }
@@ -2397,6 +2572,108 @@ mod tests {
             .and_then(|b| b.as_array())
             .map(|a| a.iter().filter_map(|v| v.as_u64()).collect())
             .unwrap_or_default()
+    }
+
+    // ---- upgrade_items_by_slot_within_budget (D3) ----
+
+    /// Champion 3/6 (bonus 12835, ilvl 298) upgrades one step per 20 of currency
+    /// 3444, so the track max (6/6) costs 60 from there.
+    fn champion_chest(uid: &str, bonus_id: u64) -> Value {
+        json!({
+            "uid": uid,
+            "item_id": 280714,
+            "slot": "chest",
+            "is_equipped": false,
+            "origin": "bags",
+            "bonus_ids": [bonus_id],
+            "simc_string": format!("chest=,id=280714,bonus_id={}", bonus_id),
+            "ilevel": 298,
+            "enchant_id": 0,
+            "gem_id": 0,
+            "sockets": 0,
+        })
+    }
+
+    #[test]
+    fn upgrade_within_budget_offers_highest_affordable_variant() {
+        // Guards the crest budget: the variant must stop at the highest level the
+        // budget pays for, not jump to the track max like upgrade_items_by_slot.
+        ensure_game_data_loaded();
+        let mut items_by_slot = HashMap::new();
+        items_by_slot.insert(
+            "chest".to_string(),
+            vec![champion_chest("280714:12835:bags:chest", 12835)],
+        );
+        let budget: HashMap<u64, u64> = [(3444, 30)].into_iter().collect();
+
+        let result = upgrade_items_by_slot_within_budget(&items_by_slot, &budget);
+        let chest = result.get("chest").expect("chest slot preserved");
+        assert_eq!(chest.len(), 2, "current level plus one affordable variant");
+        let variant = &chest[1];
+        assert_eq!(variant["upgraded"], json!(true));
+        assert_eq!(variant["upgrade_cost"], json!({ "3444": 20 }));
+        assert_eq!(variant["bonus_ids"], json!([12836]));
+        assert_eq!(variant["ilevel"], json!(302));
+        assert_eq!(variant["uid"], json!("280714:12835:bags:chest:up302"));
+        assert!(variant["simc_string"]
+            .as_str()
+            .unwrap()
+            .contains("bonus_id=12836"));
+    }
+
+    #[test]
+    fn upgrade_within_budget_takes_track_max_when_budget_covers_it() {
+        ensure_game_data_loaded();
+        let mut items_by_slot = HashMap::new();
+        items_by_slot.insert(
+            "chest".to_string(),
+            vec![champion_chest("280714:12835:bags:chest", 12835)],
+        );
+        let budget: HashMap<u64, u64> = [(3444, 60)].into_iter().collect();
+
+        let result = upgrade_items_by_slot_within_budget(&items_by_slot, &budget);
+        let variant = &result["chest"][1];
+        assert_eq!(variant["bonus_ids"], json!([12838]), "Champion 6/6");
+        assert_eq!(variant["upgrade_cost"], json!({ "3444": 60 }));
+    }
+
+    #[test]
+    fn upgrade_within_budget_emits_no_variant_when_unaffordable() {
+        // A budget below one step, and an item already at track max, must both
+        // leave the slot list untouched (no zero-cost duplicate combos).
+        ensure_game_data_loaded();
+        let mut items_by_slot = HashMap::new();
+        items_by_slot.insert(
+            "chest".to_string(),
+            vec![champion_chest("280714:12835:bags:chest", 12835)],
+        );
+        items_by_slot.insert(
+            "head".to_string(),
+            vec![champion_chest("280714:12838:bags:head", 12838)],
+        );
+        let budget: HashMap<u64, u64> = [(3444, 19)].into_iter().collect();
+
+        let result = upgrade_items_by_slot_within_budget(&items_by_slot, &budget);
+        assert_eq!(result["chest"].len(), 1, "19 crests buys no step");
+
+        let rich: HashMap<u64, u64> = [(3444, 999)].into_iter().collect();
+        let maxed = upgrade_items_by_slot_within_budget(&items_by_slot, &rich);
+        assert_eq!(maxed["head"].len(), 1, "already at track max");
+    }
+
+    #[test]
+    fn upgrade_within_budget_ignores_items_with_no_currency_in_budget() {
+        // Missing currency means "none owned", not "free".
+        ensure_game_data_loaded();
+        let mut items_by_slot = HashMap::new();
+        items_by_slot.insert(
+            "chest".to_string(),
+            vec![champion_chest("280714:12835:bags:chest", 12835)],
+        );
+        let budget: HashMap<u64, u64> = [(3446, 500)].into_iter().collect();
+
+        let result = upgrade_items_by_slot_within_budget(&items_by_slot, &budget);
+        assert_eq!(result["chest"].len(), 1);
     }
 
     #[test]

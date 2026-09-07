@@ -184,6 +184,10 @@ pub struct TopGearRequest {
     /// When true, generate Void Forge candidates for eligible slots
     #[serde(default)]
     pub void_forge: bool,
+    /// Upgrade-currency budget (currency id -> amount) for `max_upgrade`.
+    /// `None` keeps the unbounded "everything at track max" behaviour.
+    #[serde(default)]
+    pub upgrade_budget: Option<HashMap<u64, u64>>,
     #[serde(flatten)]
     pub options: SimOptions,
 }

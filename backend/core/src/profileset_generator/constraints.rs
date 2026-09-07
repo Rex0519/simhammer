@@ -17,6 +17,10 @@ pub(super) struct GearSetContext<'a> {
     /// all (Drop Finder, Crest Upgrades), so the check is skipped rather
     /// than vacuously failed on an unrelated profile.
     pub max_catalyst_charges: Option<u32>,
+    /// Upgrade-currency budget (currency id -> amount owned). `None` = Top Gear
+    /// was not given a crest budget, so upgrade variants (if any) are unbounded
+    /// — today's `max_upgrade` behaviour. Borrowed to keep the context `Copy`.
+    pub upgrade_budget: Option<&'a HashMap<u64, u64>>,
 }
 
 /// Single funnel every generator must call before emitting a gear set. Aggregates
@@ -40,6 +44,11 @@ pub(super) fn is_legal_gear_set<V: Borrow<Value>>(
     }
     if let Some(charges) = ctx.max_catalyst_charges {
         if !validate_catalyst_constraint(gear_set, charges) {
+            return false;
+        }
+    }
+    if let Some(budget) = ctx.upgrade_budget {
+        if !validate_upgrade_budget(gear_set, budget) {
             return false;
         }
     }
@@ -75,6 +84,35 @@ pub(super) fn validate_catalyst_constraint<V: Borrow<Value>>(
         })
         .count() as u32;
     catalyst_count <= max_charges
+}
+
+/// Sum the `upgrade_cost` of every budgeted upgrade variant in the set and
+/// reject it if any currency overspends. Items are offered only at levels they
+/// can afford alone (`game_data::upgrade_items_by_slot_within_budget`), so this
+/// is what stops a set from spending the same crests twice.
+pub(super) fn validate_upgrade_budget<V: Borrow<Value>>(
+    gear_set: &HashMap<String, V>,
+    budget: &HashMap<u64, u64>,
+) -> bool {
+    let mut spent: HashMap<u64, u64> = HashMap::new();
+    for item in gear_set.values() {
+        let Some(costs) = item
+            .borrow()
+            .get("upgrade_cost")
+            .and_then(|c| c.as_object())
+        else {
+            continue;
+        };
+        for (cid, amount) in costs {
+            let Ok(cid) = cid.parse::<u64>() else {
+                continue;
+            };
+            *spent.entry(cid).or_insert(0) += amount.as_u64().unwrap_or(0);
+        }
+    }
+    spent
+        .iter()
+        .all(|(cid, amount)| budget.get(cid).copied().unwrap_or(0) >= *amount)
 }
 
 pub(super) fn validate_weapon_constraint<V: Borrow<Value>>(
@@ -184,6 +222,7 @@ pub(super) fn validate_item_limits<V: Borrow<Value>>(gear_set: &HashMap<String, 
 mod tests {
     use super::*;
     use crate::test_support::{ensure_game_data_loaded, TestItem};
+    use serde_json::json;
 
     fn item(id: u64) -> Value {
         TestItem::new(id).build()
@@ -222,6 +261,50 @@ mod tests {
         gs.insert("finger1".to_string(), emb1);
         gs.insert("main_hand".to_string(), emb2);
         assert!(validate_item_limits(&gs));
+    }
+
+    fn upgraded_item(id: u64, currency_id: u64, amount: u64) -> Value {
+        let mut v = TestItem::new(id).build();
+        v["upgraded"] = json!(true);
+        v["upgrade_cost"] = json!({ currency_id.to_string(): amount });
+        v
+    }
+
+    #[test]
+    fn upgrade_budget_rejects_set_whose_costs_sum_past_the_budget() {
+        // Guards the crest budget: each variant is affordable alone (the generator
+        // only offers affordable ones), so only the summed check catches the set.
+        let mut gs = HashMap::new();
+        gs.insert("head".to_string(), upgraded_item(1, 3444, 40));
+        gs.insert("chest".to_string(), upgraded_item(2, 3444, 40));
+        let budget: HashMap<u64, u64> = [(3444, 60)].into_iter().collect();
+        assert!(
+            !validate_upgrade_budget(&gs, &budget),
+            "80 crests spent against a 60 budget must be rejected"
+        );
+    }
+
+    #[test]
+    fn upgrade_budget_accepts_set_within_the_budget() {
+        let mut gs = HashMap::new();
+        gs.insert("head".to_string(), upgraded_item(1, 3444, 40));
+        gs.insert("chest".to_string(), upgraded_item(2, 3444, 40));
+        gs.insert("legs".to_string(), item(3));
+        let budget: HashMap<u64, u64> = [(3444, 80)].into_iter().collect();
+        assert!(validate_upgrade_budget(&gs, &budget));
+    }
+
+    #[test]
+    fn upgrade_budget_is_per_currency() {
+        // Spend on one crest tier must not eat another tier's budget.
+        let mut gs = HashMap::new();
+        gs.insert("head".to_string(), upgraded_item(1, 3444, 60));
+        gs.insert("chest".to_string(), upgraded_item(2, 3446, 60));
+        let budget: HashMap<u64, u64> = [(3444, 60), (3446, 60)].into_iter().collect();
+        assert!(validate_upgrade_budget(&gs, &budget));
+
+        let short: HashMap<u64, u64> = [(3444, 60), (3446, 40)].into_iter().collect();
+        assert!(!validate_upgrade_budget(&gs, &short));
     }
 
     #[test]

@@ -107,6 +107,17 @@ pub fn build_iterator_from_request_json(json: &str) -> Result<ProfilesetIterator
         .and_then(|v| v.as_u64())
         .map(|n| n as u32);
 
+    // Crest budget under "upgrade_budget" (written by both envelope writers).
+    // `None` is preserved so the resumed job rejects the same over-budget sets.
+    let upgrade_budget: Option<HashMap<u64, u64>> = payload
+        .get("upgrade_budget")
+        .and_then(|v| v.as_object())
+        .map(|m| {
+            m.iter()
+                .filter_map(|(k, v)| Some((k.parse::<u64>().ok()?, v.as_u64()?)))
+                .collect()
+        });
+
     // Delegate to the shared builder in top_gear.rs (takes a GemEnchantOptions struct).
     let gem_opts = GemEnchantOptions {
         enchant_selections: Some(&enchant_selections),
@@ -124,6 +135,7 @@ pub fn build_iterator_from_request_json(json: &str) -> Result<ProfilesetIterator
         &talent_builds,
         &gem_opts,
         catalyst_charges,
+        upgrade_budget.as_ref(),
     ))
 }
 
@@ -201,6 +213,52 @@ mod tests {
             cfg.max_catalyst_charges,
             Some(2),
             "resumed config must carry the catalyst budget from the stored envelope"
+        );
+    }
+
+    #[test]
+    fn resume_rebuild_carries_upgrade_budget() {
+        use crate::test_support::ensure_game_data_loaded;
+        ensure_game_data_loaded();
+
+        // Guards the resume path: a dropped upgrade_budget would let a resumed
+        // chunk emit combos the original run rejected as over budget.
+        let envelope = json!({
+            "sim_type": "top_gear",
+            "version": 1,
+            "payload": {
+                "base_profile": "",
+                "items_by_slot": {},
+                "upgrade_budget": { "3444": 60, "3446": 40 },
+            }
+        });
+        let cfg = build_iterator_from_request_json(&envelope.to_string())
+            .expect("rebuild should succeed");
+        let budget = cfg
+            .upgrade_budget
+            .expect("resumed config must carry the stored upgrade budget");
+        assert_eq!(budget.get(&3444), Some(&60));
+        assert_eq!(budget.get(&3446), Some(&40));
+    }
+
+    #[test]
+    fn resume_rebuild_no_upgrade_budget_is_none() {
+        use crate::test_support::ensure_game_data_loaded;
+        ensure_game_data_loaded();
+
+        let envelope = json!({
+            "sim_type": "top_gear",
+            "version": 1,
+            "payload": {
+                "base_profile": "",
+                "items_by_slot": {},
+            }
+        });
+        let cfg = build_iterator_from_request_json(&envelope.to_string())
+            .expect("rebuild should succeed");
+        assert!(
+            cfg.upgrade_budget.is_none(),
+            "no stored budget must stay unbounded"
         );
     }
 

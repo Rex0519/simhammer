@@ -103,7 +103,9 @@ pub(super) async fn cloud_estimate_top_gear(
     _repo: web::Data<JobRepo>,
 ) -> HttpResponse {
     // ── 1. Resolve gear + count combos (count-only; mirrors get_top_gear_combo_count) ──
-    let raw_input = if req.max_upgrade {
+    // Mirrors create_top_gear_sim: a budgeted run leaves the profile at its
+    // current levels and pays for per-item upgrade variants instead.
+    let raw_input = if req.max_upgrade && req.upgrade_budget.is_none() {
         game_data::upgrade_simc_input(&req.simc_input)
     } else {
         req.simc_input.clone()
@@ -133,7 +135,10 @@ pub(super) async fn cloud_estimate_top_gear(
         super::simc_input::resolve_to_items_by_slot(&resolved)
     };
     if req.max_upgrade {
-        items_by_slot = game_data::upgrade_items_by_slot(&items_by_slot);
+        items_by_slot = match req.upgrade_budget.as_ref() {
+            Some(budget) => game_data::upgrade_items_by_slot_within_budget(&items_by_slot, budget),
+            None => game_data::upgrade_items_by_slot(&items_by_slot),
+        };
     }
     if req.copy_enchants {
         items_by_slot = game_data::apply_copy_enchants(&items_by_slot);
@@ -159,6 +164,7 @@ pub(super) async fn cloud_estimate_top_gear(
         &talent_builds,
         catalyst_charges,
         &gem_opts,
+        req.upgrade_budget.as_ref(),
     ) {
         Ok(n) => n as u64,
         Err(e) => {

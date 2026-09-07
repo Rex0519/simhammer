@@ -114,6 +114,7 @@ pub(super) async fn start_streaming_top_gear_job(mut start: StreamingTopGearStar
         &talent_builds,
         &gem_opts,
         catalyst_charges,
+        req.upgrade_budget.as_ref(),
     );
 
     if let Some(resp) = validate_batch(&req.options.batch_id, repo.get_ref()).await {
@@ -147,6 +148,7 @@ pub(super) async fn start_streaming_top_gear_job(mut start: StreamingTopGearStar
             "max_colors": req.max_colors,
             "talent_builds": talent_builds,
             "catalyst_charges": catalyst_charges,
+            "upgrade_budget": req.upgrade_budget,
             "spec": req.options.spec_override,
             "base_profile": base_profile,
             "max_combinations": max_combinations,

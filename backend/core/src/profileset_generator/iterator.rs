@@ -80,6 +80,9 @@ pub struct ProfilesetIteratorConfig {
     /// Catalyst budget for the gear-validator. `None` = request has no catalyst
     /// (mirrors the eager path's `GearSetContext`).
     pub max_catalyst_charges: Option<u32>,
+    /// Upgrade-currency budget for the gear-validator (currency id -> amount).
+    /// `None` = no crest budget, so upgrade variants are unbounded.
+    pub upgrade_budget: Option<HashMap<u64, u64>>,
 }
 
 // ── Internal evaluation result ────────────────────────────────────────────────
@@ -263,6 +266,7 @@ impl ProfilesetIterator {
             &super::constraints::GearSetContext {
                 spec: &self.cfg.spec,
                 max_catalyst_charges: self.cfg.max_catalyst_charges,
+                upgrade_budget: self.cfg.upgrade_budget.as_ref(),
             },
         ) {
             return None;
@@ -707,6 +711,7 @@ mod tests {
             socketed_item_ids: HashSet::new(),
             talent_builds: vec![],
             max_catalyst_charges: None,
+            upgrade_budget: None,
         }
     }
 
@@ -723,6 +728,7 @@ mod tests {
             socketed_item_ids: HashSet::new(),
             talent_builds: vec![],
             max_catalyst_charges: None,
+            upgrade_budget: None,
         };
         let iter = ProfilesetIterator::new(cfg);
         assert_eq!(iter.count(), 0);
@@ -760,6 +766,7 @@ mod tests {
             socketed_item_ids,
             talent_builds: vec![],
             max_catalyst_charges: None,
+            upgrade_budget: None,
         };
 
         let yielded: Vec<_> = ProfilesetIterator::new(cfg).collect();
@@ -810,6 +817,7 @@ mod tests {
             socketed_item_ids,
             talent_builds: vec![],
             max_catalyst_charges: None,
+            upgrade_budget: None,
         };
         ProfilesetIterator::new(cfg).collect()
     }
@@ -871,6 +879,7 @@ mod tests {
             socketed_item_ids,
             talent_builds: vec![],
             max_catalyst_charges: None,
+            upgrade_budget: None,
         };
 
         let mut it = ProfilesetIterator::new(cfg);
@@ -992,6 +1001,7 @@ mod tests {
                 socketed_item_ids: HashSet::new(),
                 talent_builds: vec![],
                 max_catalyst_charges: budget,
+                upgrade_budget: None,
             }
         };
 
@@ -1010,6 +1020,61 @@ mod tests {
             without_budget - with_budget,
             1,
             "budget=1 must filter exactly the double-catalyst combo that budget=None admits"
+        );
+    }
+
+    #[test]
+    fn streaming_iterator_enforces_upgrade_budget() {
+        // Guards #144: two 40-crest upgrade variants must not both be worn on a
+        // 60-crest budget, even though each is affordable on its own.
+        use crate::test_support::{ensure_game_data_loaded, TestItem};
+        ensure_game_data_loaded();
+
+        let upgraded = |id: u64, amount: u64| {
+            let mut v = TestItem::new(id).build();
+            v["upgraded"] = json!(true);
+            v["upgrade_cost"] = json!({ "3444": amount });
+            Arc::new(v)
+        };
+
+        let make_cfg = |budget: Option<HashMap<u64, u64>>| {
+            let mut slot_item_lists: HashMap<String, Vec<Arc<Value>>> = HashMap::new();
+            slot_item_lists.insert(
+                "head".into(),
+                vec![Arc::new(TestItem::new(101).build()), upgraded(101, 40)],
+            );
+            slot_item_lists.insert(
+                "chest".into(),
+                vec![Arc::new(TestItem::new(201).build()), upgraded(201, 40)],
+            );
+            ProfilesetIteratorConfig {
+                spec: "arms".into(),
+                base_profile: Arc::from(""),
+                slot_item_lists,
+                varying_slots: vec!["chest".into(), "head".into()],
+                enchant_axes: vec![],
+                gem_combo_count: 0,
+                gem_combos_resolver: GemCombosResolver::new(vec![]),
+                socketed_item_ids: HashSet::new(),
+                talent_builds: vec![],
+                max_catalyst_charges: None,
+                upgrade_budget: budget,
+            }
+        };
+
+        let count = |budget| ProfilesetIterator::new(make_cfg(budget)).count();
+
+        let without_budget = count(None);
+        let with_budget = count(Some([(3444u64, 60u64)].into_iter().collect()));
+        assert!(
+            with_budget < without_budget,
+            "a 60-crest budget must drop combos an unbounded run emits \
+             (with={with_budget}, without={without_budget})"
+        );
+        assert_eq!(
+            without_budget - with_budget,
+            1,
+            "exactly the both-upgraded combo (80 crests) is over budget"
         );
     }
 
