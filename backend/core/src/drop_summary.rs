@@ -118,16 +118,21 @@ pub fn summarize(result: &Value) -> Option<Value> {
     let mut by_source: BTreeMap<String, Group> = BTreeMap::new();
     let mut by_instance: BTreeMap<String, Group> = BTreeMap::new();
     for (idx, drop) in drops.iter().enumerate() {
-        by_source
+        let source = by_source
             .entry(drop.encounter_key.clone())
             .or_insert_with(|| Group {
                 key: drop.encounter_key.clone(),
                 label: drop.encounter.clone(),
                 instance_name: drop.instance_name.clone(),
                 drops: Vec::new(),
-            })
-            .drops
-            .push(idx);
+            });
+        // A boss's first drop can arrive without an instance name (older jobs,
+        // or rows the drops API returned without one), so keep looking until a
+        // drop of that boss names the instance.
+        if source.instance_name.is_empty() {
+            source.instance_name = drop.instance_name.clone();
+        }
+        source.drops.push(idx);
         // Drops without an instance (crafted, world) stay out of that rollup.
         if !drop.instance_name.is_empty() {
             by_instance
@@ -408,6 +413,24 @@ mod tests {
         });
         assert!(summarize(&result(vec![row("Combo 2", 100.0, vec![plain])])).is_none());
         assert!(summarize(&json!({"base_dps": 100000.0})).is_none());
+    }
+
+    // A boss's rows are ordered by the dedupe key, so the first one can be the
+    // drop that carries no instance name — the source row must still name the
+    // instance the later drops of that boss report.
+    #[test]
+    fn source_instance_name_skips_empty_first_drop() {
+        let nameless = item(1, 1, "Boss A");
+        let mut named = item(2, 1, "Boss A");
+        named["instance_name"] = json!("Sporefall");
+
+        let summary = summarize(&result(vec![
+            row("Combo 2", 300.0, vec![nameless]),
+            row("Combo 3", 100.0, vec![named]),
+        ]))
+        .expect("summary");
+
+        assert_eq!(source(&summary, "Boss A")["instance_name"], "Sporefall");
     }
 
     // Bosses roll up into the instance they belong to; drops without an

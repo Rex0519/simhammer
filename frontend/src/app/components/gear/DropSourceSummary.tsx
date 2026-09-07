@@ -73,12 +73,16 @@ export default function DropSourceSummaryTable({
           const label = isSource ? row.encounter : row.instance_name;
           const sub = isSource ? row.instance_name : '';
           const bestItem = isSource ? row.best_item : null;
+          // The row click regroups the result table by boss, which only makes
+          // sense from the boss view — the instance rows stay non-interactive.
+          const onRowClick = isSource ? onSelectSource : undefined;
           return (
-            <div
+            <button
+              type="button"
               key={isSource ? row.key : row.instance_name}
-              onClick={onSelectSource}
-              className={`relative overflow-hidden rounded-lg transition-colors ${
-                onSelectSource ? 'cursor-pointer hover:bg-white/[0.04]' : ''
+              onClick={onRowClick}
+              className={`relative block w-full overflow-hidden rounded-lg text-left transition-colors ${
+                onRowClick ? 'cursor-pointer hover:bg-white/[0.04]' : 'cursor-default'
               }`}
             >
               <div
@@ -134,7 +138,7 @@ export default function DropSourceSummaryTable({
                   {Math.round(row.upgrade_chance * 100)}%
                 </span>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
