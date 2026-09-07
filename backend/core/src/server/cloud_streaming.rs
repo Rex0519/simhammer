@@ -66,6 +66,8 @@ pub(super) async fn start_cloud_streaming(
         diamond_always_use: req.diamond_always_use,
         max_colors: req.max_colors,
     };
+    let locked_slots: std::collections::HashSet<String> =
+        req.locked_slots.iter().cloned().collect();
     let iter_cfg = profileset_generator::build_iterator_config(
         &base_profile,
         &items_by_slot,
@@ -73,6 +75,7 @@ pub(super) async fn start_cloud_streaming(
         &talent_builds,
         &gem_opts,
         catalyst_charges,
+        &locked_slots,
     );
 
     if let Some(resp) =
@@ -115,6 +118,7 @@ pub(super) async fn start_cloud_streaming(
             "base_profile": base_profile,
             "max_combinations": max_combinations,
             "void_forge": req.void_forge,
+            "locked_slots": req.locked_slots,
             "options": req.options.to_json(),
             "streaming": true,
             "estimate": estimate,

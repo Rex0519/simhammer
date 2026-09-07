@@ -39,6 +39,8 @@ interface TopGearItemSelectorProps {
   onManualItemAdded: (item: ResolvedItem) => void;
   addedKeys: Set<string>;
   onRemoveAdded: (item: ResolvedItem) => void;
+  lockedSlots: Set<string>;
+  onToggleLock: (slot: string) => void;
 }
 
 const SOCKET_BONUS_ID = 13668;
@@ -52,6 +54,8 @@ export default function TopGearItemSelector({
   onManualItemAdded,
   addedKeys,
   onRemoveAdded,
+  lockedSlots,
+  onToggleLock,
 }: TopGearItemSelectorProps) {
   const { t, locale } = useLanguage();
   useItemNames();
@@ -346,6 +350,8 @@ export default function TopGearItemSelector({
             }}
             addedKeys={addedKeys}
             onRemoveAdded={onRemoveAdded}
+            lockedSlots={lockedSlots}
+            onToggleLock={onToggleLock}
             t={t}
           />
         ))}

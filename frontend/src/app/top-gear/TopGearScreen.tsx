@@ -136,6 +136,7 @@ export default function TopGearScreen() {
   const [replaceGems, setReplaceGems] = useState(false);
   const [diamondAlwaysUse, setDiamondAlwaysUse] = useState(false);
   const [maxColors, setMaxColors] = useState(false);
+  const [lockedSlots, setLockedSlots] = useState<Set<string>>(new Set());
   const prevInputRef = useRef('');
   const prevUpgradeRef = useRef(false);
   const prevCatalystRef = useRef(false);
@@ -171,6 +172,7 @@ export default function TopGearScreen() {
     }
     setEnchantSelections(restoredEnchants);
     setGemSelections(new Set(saved.gemSelections));
+    setLockedSlots(new Set(saved.lockedSlots ?? []));
     setAddedLootItems(saved.addedLootItems ?? []);
   }, []);
 
@@ -231,6 +233,7 @@ export default function TopGearScreen() {
             setAddedLootItems([]);
             setEnchantSelections({});
             setGemSelections(new Set());
+            setLockedSlots(new Set());
             setReplaceGems(false);
             setDiamondAlwaysUse(false);
             setMaxColors(false);
@@ -262,6 +265,7 @@ export default function TopGearScreen() {
     [enchantSelections]
   );
   const gemOptionsArray = useMemo(() => Array.from(gemSelections), [gemSelections]);
+  const lockedSlotsArray = useMemo(() => Array.from(lockedSlots).sort(), [lockedSlots]);
 
   const onEnchantToggle = useCallback((slot: string, id: number) => {
     setEnchantSelections((previous) => {
@@ -302,6 +306,15 @@ export default function TopGearScreen() {
       if (!ids || ids.length === 0) return new Set();
       const next = new Set(previous);
       for (const id of ids) next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const onToggleLock = useCallback((slot: string) => {
+    setLockedSlots((previous) => {
+      const next = new Set(previous);
+      if (next.has(slot)) next.delete(slot);
+      else next.add(slot);
       return next;
     });
   }, []);
@@ -360,6 +373,7 @@ export default function TopGearScreen() {
       replace_gems: replaceGems,
       diamond_always_use: diamondAlwaysUse,
       max_colors: maxColors,
+      locked_slots: lockedSlotsArray,
       ...(voidForge || hasVoidForgeItems ? { void_forge: true } : {}),
     };
   }, [
@@ -377,6 +391,7 @@ export default function TopGearScreen() {
     replaceGems,
     diamondAlwaysUse,
     maxColors,
+    lockedSlotsArray,
     voidForge,
     hasVoidForgeItems,
   ]);
@@ -433,6 +448,7 @@ export default function TopGearScreen() {
       replace_gems: replaceGems,
       diamond_always_use: diamondAlwaysUse,
       max_colors: maxColors,
+      locked_slots: lockedSlotsArray,
       ...(voidForge || hasVoidForgeItems ? { void_forge: true } : {}),
       compute_provider: compute,
     }),
@@ -450,6 +466,7 @@ export default function TopGearScreen() {
       replaceGems,
       diamondAlwaysUse,
       maxColors,
+      lockedSlotsArray,
       voidForge,
       hasVoidForgeItems,
       compute,
@@ -564,6 +581,7 @@ export default function TopGearScreen() {
       diamondAlwaysUse,
       maxColors,
       addedLootItems,
+      lockedSlots: lockedSlotsArray,
     });
   }, [
     selectedUids,
@@ -578,6 +596,7 @@ export default function TopGearScreen() {
     diamondAlwaysUse,
     maxColors,
     addedLootItems,
+    lockedSlotsArray,
   ]);
 
   const { submit, submitting, error, buttonLabel } = useSimSubmit({
@@ -691,6 +710,8 @@ export default function TopGearScreen() {
             }}
             addedKeys={addedKeys}
             onRemoveAdded={handleRemoveAdded}
+            lockedSlots={lockedSlots}
+            onToggleLock={onToggleLock}
           />
           <EnchantSelector
             equippedSlots={equippedSlots}

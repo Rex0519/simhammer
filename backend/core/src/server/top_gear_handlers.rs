@@ -1,6 +1,6 @@
 use actix_web::{web, HttpRequest, HttpResponse};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::handler_prep::{
@@ -98,6 +98,7 @@ pub(super) async fn create_top_gear_sim(
     let talent_builds = normalized_talent_builds(&req.talent_builds);
     let max_combinations = capped_max_combinations(req.max_combinations);
     let socketed_ids = socketed_item_ids(&resolved);
+    let locked_slots: HashSet<String> = req.locked_slots.iter().cloned().collect();
     let gem_opts = profileset_generator::GemEnchantOptions {
         enchant_selections: Some(&req.enchant_selections),
         gem_options: &req.gem_options,
@@ -118,6 +119,7 @@ pub(super) async fn create_top_gear_sim(
         &talent_builds,
         catalyst_charges,
         &gem_opts,
+        &locked_slots,
     ) {
         Ok(0) => {
             return HttpResponse::BadRequest().json(json!({
@@ -210,6 +212,7 @@ pub(super) async fn create_top_gear_sim(
             &talent_builds,
             catalyst_charges,
             &gem_opts,
+            &locked_slots,
         ) {
             Ok(r) => r,
             Err(e) => {
@@ -246,6 +249,7 @@ pub(super) async fn create_top_gear_sim(
         "base_profile": base_profile,
         "max_combinations": max_combinations,
         "void_forge": req.void_forge,
+        "locked_slots": req.locked_slots,
         "options": req.options.to_json(),
     });
 
@@ -297,6 +301,7 @@ pub(super) async fn get_top_gear_combo_count(req: web::Json<TopGearRequest>) -> 
     let talent_builds = normalized_talent_builds(&req.talent_builds);
     let max_combinations = capped_max_combinations(req.max_combinations);
     let socketed_item_ids = socketed_item_ids(&resolved);
+    let locked_slots: HashSet<String> = req.locked_slots.iter().cloned().collect();
     let gem_opts = profileset_generator::GemEnchantOptions {
         enchant_selections: Some(&req.enchant_selections),
         gem_options: &req.gem_options,
@@ -314,6 +319,7 @@ pub(super) async fn get_top_gear_combo_count(req: web::Json<TopGearRequest>) -> 
         &talent_builds,
         catalyst_charges,
         &gem_opts,
+        &locked_slots,
     ) {
         Ok(count) => HttpResponse::Ok().json(json!({ "combo_count": count })),
         Err(e) => {

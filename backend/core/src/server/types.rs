@@ -184,6 +184,10 @@ pub struct TopGearRequest {
     /// When true, generate Void Forge candidates for eligible slots
     #[serde(default)]
     pub void_forge: bool,
+    /// Real slot names (`finger2`, `trinket1`, …) pinned to their equipped item.
+    /// A locked slot never varies; unknown names are ignored.
+    #[serde(default)]
+    pub locked_slots: Vec<String>,
     #[serde(flatten)]
     pub options: SimOptions,
 }
