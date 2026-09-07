@@ -12,6 +12,8 @@ export interface GearItem {
   gem_id?: number;
   /** All gem IDs (one per socket); necks/crafted items hold 2+ but `gem_id` only carries the first, so prefer `gem_ids` when present. */
   gem_ids?: number[];
+  /** Set when the combo assumes this item gained a socket ("add up to N sockets"). */
+  socket_added?: boolean;
   is_kept?: boolean;
   upgrade_levels?: number;
   origin?: string;

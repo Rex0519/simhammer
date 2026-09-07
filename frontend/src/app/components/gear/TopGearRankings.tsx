@@ -577,7 +577,7 @@ function ItemTag({
   enchant?: EnchantInfo;
   gem?: GemInfo;
 }) {
-  const { locale } = useLanguage();
+  const { t, locale } = useLanguage();
   useItemNames();
 
   const qualityColor = info ? QUALITY_COLORS[info.quality] || '#fff' : '#fff';
@@ -641,6 +641,11 @@ function ItemTag({
           L
         </span>
       ) : null}
+      {item.socket_added && (
+        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-sky-300">
+          {t('gear.socketAdded')}
+        </span>
+      )}
       {enchant?.name && (
         <span
           className="max-w-[70px] truncate text-[11px] text-emerald-400/70"
