@@ -1,6 +1,6 @@
 use actix_web::{web, HttpRequest, HttpResponse};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::handler_prep::{
@@ -83,6 +83,7 @@ pub(super) async fn create_talent_compare_sim(
             &talent_builds,
             None,
             &gem_opts,
+            &HashSet::new(),
         ) {
             Ok(r) => r,
             Err(e) => {

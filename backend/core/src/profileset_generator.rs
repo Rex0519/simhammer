@@ -1113,6 +1113,7 @@ main_hand=,id=200\n";
             &talents,
             None,
             &GemEnchantOptions::default(),
+            &HashSet::new(),
         )
         .unwrap();
 
