@@ -16,6 +16,10 @@ export interface GearItem {
   socket_added?: boolean;
   is_kept?: boolean;
   upgrade_levels?: number;
+  /** Set on a budgeted upgrade variant (#144). */
+  upgraded?: boolean;
+  /** Crest cost of that upgrade, by currency id. */
+  upgrade_cost?: Record<string, number>;
   origin?: string;
 }
 

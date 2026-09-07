@@ -16,9 +16,25 @@ import {
 } from '../../lib/useItemInfo';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
 import { useLanguage } from '../../lib/i18n';
+import { getUpgradeCurrencies } from '../../lib/upgradeCurrencies';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 import type { GroupMode, ResultItem, TopGearResult } from './topGearResultsTypes';
 import { gemBadgeClass, groupResults } from './topGearResultsUtils';
+
+/** Crests a combo spends on budgeted upgrades (#144), totalled per currency id
+ * — currencies are not interchangeable, so they must never be summed together.
+ * Empty when the combo upgrades nothing. */
+function upgradeSpendByCurrency(items: ResultItem[]): { id: string; amount: number }[] {
+  const totals = new Map<string, number>();
+  for (const item of items) {
+    for (const [currencyId, amount] of Object.entries(item.upgrade_cost ?? {})) {
+      totals.set(currencyId, (totals.get(currencyId) ?? 0) + amount);
+    }
+  }
+  return [...totals.entries()]
+    .map(([id, amount]) => ({ id, amount }))
+    .sort((a, b) => Number(a.id) - Number(b.id));
+}
 
 /** Numeric combo id from a "Combo N" name; null for other shapes (e.g. "Currently Equipped"). */
 function comboIdFromName(name: string): number | null {
@@ -388,6 +404,8 @@ const ResultRow = memo(function ResultRow({
   const changedItems = result.items.filter(
     (item) => !item.is_kept && item.item_id > 0 && !item.type
   );
+  const crestSpend = upgradeSpendByCurrency(result.items);
+  const currencyMeta = crestSpend.length > 0 ? getUpgradeCurrencies() : {};
   const enchantGemItems = result.items.filter(
     (item) => item.type === 'enchant' || item.type === 'gem'
   );
@@ -494,6 +512,24 @@ const ResultRow = memo(function ResultRow({
           )}
         </div>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-3">
+          {crestSpend.map(({ id, amount }) => {
+            const meta = currencyMeta[id];
+            return (
+              <span
+                key={id}
+                className="flex shrink-0 items-center gap-1 rounded bg-surface-container-high px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-on-surface-variant"
+              >
+                {meta?.icon && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img {...iconProps(meta.icon)} alt="" className="h-3.5 w-3.5 rounded-sm" />
+                )}
+                {t('topGear.budgetSpend', {
+                  amount: amount.toLocaleString(),
+                  currency: meta?.name || t('upgradeCompare.unknownCurrency', { id }),
+                })}
+              </span>
+            );
+          })}
           <span
             className={`flex items-center gap-1.5 font-headline font-mono text-[15px] tabular-nums ${
               result.delta > 0

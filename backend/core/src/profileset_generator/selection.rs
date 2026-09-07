@@ -56,6 +56,18 @@ pub(super) fn make_item_uid(item: &Value) -> String {
     )
 }
 
+/// A budget-aware upgrade variant's uid is its source item's uid plus
+/// `:up<ilvl>` (see `game_data::upgrade_items_by_slot_within_budget`). Selection
+/// arrives keyed by the source uid, so strip the suffix before matching.
+/// `None` for any uid that isn't such a variant.
+fn upgrade_variant_base_uid(uid: &str) -> Option<&str> {
+    let (base, level) = uid.rsplit_once(":up")?;
+    if level.is_empty() || !level.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    Some(base)
+}
+
 fn make_item_identity(item: &Value) -> String {
     if let Some(uid) = item.get("uid").and_then(|v| v.as_str()) {
         if !uid.is_empty() {
@@ -129,29 +141,27 @@ pub(super) fn build_slot_candidates(
         let mut candidates: Vec<Value> = Vec::new();
         for item in slot_items {
             let uid = make_item_uid(item);
-            // A socket-added copy carries `<source uid>:socket` and nobody ever
-            // selects it: it inherits the source item's selection, including the
-            // equipped item, which is force-inserted below rather than selected.
-            let source_uid = if item
-                .get("socket_added")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-            {
-                uid.strip_suffix(super::sockets::SOCKET_UID_SUFFIX)
-            } else {
-                None
-            };
-            let keep = match source_uid {
-                Some(src) => {
-                    equipped_uid.as_deref() == Some(src)
-                        || selected_uids.contains(src)
-                        || selected_identities.contains(&uid_identity(src))
-                }
-                None => {
-                    selected_uids.contains(&uid)
-                        || selected_identities.contains(&make_item_identity(item))
-                }
-            };
+            let mut keep = selected_uids.contains(&uid)
+                || selected_identities.contains(&make_item_identity(item));
+            // Derived copies are never selected themselves: a socket-added copy
+            // carries `<source uid>:socket` and a budgeted upgrade variant carries
+            // `<source uid>:up<ilvl>`. Both inherit the selection of the item they
+            // were derived from, including the equipped item, which is
+            // force-inserted below rather than selected. Peel the suffixes one at
+            // a time so a socket copy of an upgrade variant resolves as well.
+            let mut source_uid: &str = uid.as_str();
+            while !keep {
+                let Some(src) = source_uid
+                    .strip_suffix(super::sockets::SOCKET_UID_SUFFIX)
+                    .or_else(|| upgrade_variant_base_uid(source_uid))
+                else {
+                    break;
+                };
+                keep = equipped_uid.as_deref() == Some(src)
+                    || selected_uids.contains(src)
+                    || selected_identities.contains(&uid_identity(src));
+                source_uid = src;
+            }
             if keep {
                 candidates.push(item.clone());
             }
@@ -165,6 +175,18 @@ pub(super) fn build_slot_candidates(
         }
 
         if let Some(eq) = equipped {
+            // The equipped item is never "selected", so neither is its upgrade
+            // variant — force it in alongside the equipped item itself.
+            let eq_uid = make_item_uid(eq);
+            for item in slot_items {
+                let uid = make_item_uid(item);
+                if upgrade_variant_base_uid(&uid) == Some(eq_uid.as_str())
+                    && !candidates.iter().any(|c| make_item_uid(c) == uid)
+                {
+                    candidates.push(item.clone());
+                }
+            }
+
             let already_included = candidates.iter().any(|c| {
                 c.get("item_id") == eq.get("item_id")
                     && c.get("is_equipped")
@@ -215,6 +237,7 @@ pub(super) fn build_slot_candidates(
 mod tests {
     use super::*;
     use crate::test_support::{ensure_game_data_loaded, TestItem};
+    use serde_json::json;
 
     fn make(item_id: u64, slot: &str, is_equipped: bool, bonus_ids: Vec<u64>) -> Value {
         let mut b = TestItem::new(item_id).slot(slot).bonus_ids(bonus_ids);
@@ -233,6 +256,59 @@ mod tests {
             .collect::<Vec<_>>()
             .join(":");
         format!("{}:{}:{}:{}", item_id, key, origin, slot)
+    }
+
+    /// Budget-aware upgrade variants (uid suffix `:up<ilvl>`, see
+    /// `game_data::upgrade_items_by_slot_within_budget`) must survive candidate
+    /// filtering — for the equipped item, which is never "selected", and for an
+    /// alternative the user picked by its base uid.
+    #[test]
+    fn upgrade_variants_survive_candidate_filtering() {
+        ensure_game_data_loaded();
+        let variant = |base: &Value, ilvl: u64| {
+            let mut v = base.clone();
+            v["uid"] = json!(format!("{}:up{}", make_item_uid(base), ilvl));
+            v["is_equipped"] = json!(false);
+            v["upgraded"] = json!(true);
+            v["upgrade_cost"] = json!({ "3444": 20 });
+            v
+        };
+
+        let equipped = make(100, "head", true, vec![]);
+        let alt = make(200, "head", false, vec![]);
+        let unpicked = make(300, "head", false, vec![]);
+        let items_by_slot: HashMap<String, Vec<Value>> = [(
+            "head".to_string(),
+            vec![
+                equipped.clone(),
+                variant(&equipped, 302),
+                alt.clone(),
+                variant(&alt, 302),
+                unpicked.clone(),
+                variant(&unpicked, 302),
+            ],
+        )]
+        .into_iter()
+        .collect();
+        let selected: HashMap<String, Vec<String>> =
+            [("head".to_string(), vec![uid_str(200, &[], "bags", "head")])]
+                .into_iter()
+                .collect();
+
+        let candidates = build_slot_candidates("", &items_by_slot, &selected, &HashSet::new());
+        let uids: Vec<String> = candidates["head"].iter().map(make_item_uid).collect();
+        assert!(
+            uids.contains(&"100::equipped:head:up302".to_string()),
+            "the equipped item's affordable upgrade must be a candidate: {uids:?}"
+        );
+        assert!(
+            uids.contains(&"200::bags:head:up302".to_string()),
+            "a selected alternative's upgrade must be a candidate: {uids:?}"
+        );
+        assert!(
+            !uids.iter().any(|u| u.starts_with("300:")),
+            "an unselected item and its upgrade must stay out: {uids:?}"
+        );
     }
 
     #[test]

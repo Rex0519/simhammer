@@ -84,6 +84,7 @@ pub(super) async fn create_talent_compare_sim(
             None,
             &gem_opts,
             &HashSet::new(),
+            None,
         ) {
             Ok(r) => r,
             Err(e) => {

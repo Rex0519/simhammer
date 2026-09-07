@@ -192,6 +192,10 @@ pub struct TopGearRequest {
     /// A locked slot never varies; unknown names are ignored.
     #[serde(default)]
     pub locked_slots: Vec<String>,
+    /// Upgrade-currency budget (currency id -> amount) for `max_upgrade`.
+    /// `None` keeps the unbounded "everything at track max" behaviour.
+    #[serde(default)]
+    pub upgrade_budget: Option<HashMap<u64, u64>>,
     #[serde(flatten)]
     pub options: SimOptions,
 }

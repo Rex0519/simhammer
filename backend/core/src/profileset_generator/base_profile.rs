@@ -75,6 +75,19 @@ pub(super) fn item_meta(item: &Value, slot: &str) -> Value {
     {
         meta["socket_added"] = json!(true);
     }
+    // Budgeted upgrade variants (#144) carry what they spend so the results view
+    // can total the crests a combo costs.
+    if item
+        .get("upgraded")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        meta["upgraded"] = json!(true);
+        meta["upgrade_cost"] = item
+            .get("upgrade_cost")
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+    }
     meta
 }
 
@@ -214,6 +227,27 @@ head=,id=100\n\
         assert_eq!(meta["gem_id"], 5555);
         assert_eq!(meta["is_kept"], true);
         assert_eq!(meta["origin"], "bags");
+    }
+
+    #[test]
+    fn item_meta_carries_upgrade_cost() {
+        // Guards #144: without this the results view can't show what a combo
+        // spent, and the eager/streaming metadata shapes drift apart.
+        let item = json!({
+            "item_id": 12345,
+            "upgraded": true,
+            "upgrade_cost": { "3444": 40 },
+        });
+        let meta = item_meta(&item, "head");
+        assert_eq!(meta["upgraded"], json!(true));
+        assert_eq!(meta["upgrade_cost"], json!({ "3444": 40 }));
+    }
+
+    #[test]
+    fn item_meta_omits_upgrade_cost_for_plain_items() {
+        let meta = item_meta(&json!({ "item_id": 12345 }), "head");
+        assert!(meta.get("upgrade_cost").is_none());
+        assert!(meta.get("upgraded").is_none());
     }
 
     #[test]

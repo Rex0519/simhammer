@@ -160,6 +160,7 @@ pub fn generate_top_gear_input_with_talents(
     catalyst_charges: Option<u32>,
     gem_opts: &GemEnchantOptions,
     locked_slots: &HashSet<String>,
+    upgrade_budget: Option<&HashMap<u64, u64>>,
 ) -> ProfilesetResult {
     top_gear::generate_top_gear_input_with_talents(
         base_profile,
@@ -170,6 +171,7 @@ pub fn generate_top_gear_input_with_talents(
         catalyst_charges,
         gem_opts,
         locked_slots,
+        upgrade_budget,
     )
 }
 
@@ -186,6 +188,7 @@ pub fn count_top_gear_combos_with_talents(
     catalyst_charges: Option<u32>,
     gem_opts: &GemEnchantOptions,
     locked_slots: &HashSet<String>,
+    upgrade_budget: Option<&HashMap<u64, u64>>,
 ) -> Result<usize, String> {
     top_gear::count_top_gear_combos_with_talents(
         base_profile,
@@ -196,6 +199,7 @@ pub fn count_top_gear_combos_with_talents(
         catalyst_charges,
         gem_opts,
         locked_slots,
+        upgrade_budget,
     )
 }
 
@@ -507,6 +511,7 @@ finger1=,id=102,gem_id=213453\n";
                 ..Default::default()
             },
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -569,6 +574,7 @@ finger1=,id=220001,bonus_id=13534\n";
                 ..Default::default()
             },
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -650,6 +656,7 @@ main_hand=,id=200\n";
                 ..Default::default()
             },
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -751,6 +758,7 @@ main_hand=,id=200\n";
                 ..Default::default()
             },
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -799,6 +807,7 @@ main_hand=,id=200\n";
                 ..Default::default()
             },
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -850,6 +859,7 @@ main_hand=,id=200\n";
                 ..Default::default()
             },
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -925,6 +935,7 @@ main_hand=,id=200\n";
                 ..Default::default()
             },
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -992,6 +1003,7 @@ main_hand=,id=200\n";
             None,
             &GemEnchantOptions::default(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
         assert_eq!(count, 0);
@@ -1020,6 +1032,7 @@ main_hand=,id=200\n";
             None,
             &GemEnchantOptions::default(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
         // Only the alt combo emits; the all-equipped combo is the base actor.
@@ -1054,6 +1067,7 @@ main_hand=,id=200\n";
             None,
             &GemEnchantOptions::default(),
             &HashSet::new(),
+            None,
         );
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -1090,6 +1104,7 @@ main_hand=,id=200\n";
             None,
             &GemEnchantOptions::default(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
         assert_eq!(count, 3);
@@ -1119,6 +1134,7 @@ main_hand=,id=200\n";
             None,
             &GemEnchantOptions::default(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -1190,6 +1206,7 @@ main_hand=,id=200\n";
             None,
             &GemEnchantOptions::default(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -1241,6 +1258,7 @@ finger2=,id=101\n";
             None,
             &GemEnchantOptions::default(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -1285,6 +1303,7 @@ finger2=,id=101\n";
             None,
             &GemEnchantOptions::default(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -1333,6 +1352,7 @@ finger2=,id=101\n";
             Some(1),
             &GemEnchantOptions::default(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -1365,6 +1385,7 @@ finger2=,id=101\n";
                 ..Default::default()
             },
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -1408,6 +1429,7 @@ finger2=,id=101\n";
                     ..Default::default()
                 },
                 &HashSet::new(),
+                None,
             )
             .unwrap()
             .1
@@ -1438,6 +1460,7 @@ finger2=,id=101\n";
                 ..Default::default()
             },
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -1468,6 +1491,7 @@ finger2=,id=101\n";
                 ..Default::default()
             },
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -1500,6 +1524,7 @@ finger2=,id=101\n";
             None,
             &GemEnchantOptions::default(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
         assert_eq!(count, 0);
@@ -1528,6 +1553,7 @@ finger2=,id=101\n";
             None,
             &GemEnchantOptions::default(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -1668,6 +1694,7 @@ main_hand=,id=200\n";
             None,
             &gem_opts,
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -1680,6 +1707,7 @@ main_hand=,id=200\n";
             None,
             &gem_opts,
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -1741,6 +1769,7 @@ main_hand=,id=200\n";
             None,
             &gem_opts,
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -1816,6 +1845,7 @@ main_hand=,id=200\n";
             None,
             &gem_opts,
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -1827,6 +1857,7 @@ main_hand=,id=200\n";
             &gem_opts,
             None,
             &HashSet::new(),
+            None,
         );
         let iter_count = super::ProfilesetIterator::new(cfg).count();
 
@@ -1876,6 +1907,7 @@ main_hand=,id=200\n";
             None,
             &gem_opts,
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -1887,6 +1919,7 @@ main_hand=,id=200\n";
             &gem_opts,
             None,
             &HashSet::new(),
+            None,
         );
         let iter_count = super::ProfilesetIterator::new(cfg).count();
 
@@ -1934,6 +1967,7 @@ main_hand=,id=200\n";
             None,
             &GemEnchantOptions::default(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -1969,6 +2003,7 @@ main_hand=,id=200\n";
                 ..Default::default()
             },
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -2006,6 +2041,7 @@ neck=,id=101,bonus_id=13534\n";
                 ..Default::default()
             },
             &HashSet::new(),
+            None,
         )
         .unwrap();
         assert!(count >= 1, "expected combos in max_colors mode");
@@ -2039,6 +2075,7 @@ head=,id=100\n";
             None,
             &GemEnchantOptions::default(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -2072,6 +2109,7 @@ head=,id=100\n";
             None,
             &GemEnchantOptions::default(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -2100,6 +2138,7 @@ head=,id=100\n";
                 ..Default::default()
             },
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -2123,6 +2162,7 @@ head=,id=100\n";
             None,
             &GemEnchantOptions::default(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
         assert_eq!(count, 0);
@@ -2146,6 +2186,7 @@ head=,id=100\n";
             None,
             &GemEnchantOptions::default(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
         // 2 talents × 1 equipped gear set - 1 base actor = 1 emit
@@ -2183,6 +2224,7 @@ head=,id=100\n";
             None,
             &GemEnchantOptions::default(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -2222,6 +2264,7 @@ head=,id=100\n";
                 ..Default::default()
             },
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -2328,6 +2371,98 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
         (base, items, selected, enchants, gems, socketed, talents)
     }
 
+    /// #144 acceptance: "Editing an amount changes the combination count before
+    /// the sim is started." Same gear, same selection — only the crest budget
+    /// moves, and the count moves with it.
+    #[test]
+    fn upgrade_budget_changes_combo_count() {
+        ensure_game_data_loaded();
+        // Two Champion 3/6 rings (bonus 12835). Each step up the track costs 20
+        // of currency 3444, and the track max (6/6) is 60 away.
+        let base =
+            "warrior=t\nfinger1=,id=280278,bonus_id=12835\nfinger2=,id=280715,bonus_id=12835\n";
+        let ring = |slot: &str, id: u64| {
+            json!({
+                "uid": format!("{id}:12835:equipped:{slot}"),
+                "slot": slot,
+                "simc_string": format!(",id={id},bonus_id=12835"),
+                "is_equipped": true,
+                "origin": "equipped",
+                "item_id": id,
+                "ilevel": 298,
+                "name": format!("ring{id}"),
+                "bonus_ids": [12835],
+                "enchant_id": 0,
+                "gem_id": 0,
+                "sockets": 0,
+            })
+        };
+        let mut equipped_items: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
+        equipped_items.insert("finger1".into(), vec![ring("finger1", 280278)]);
+        equipped_items.insert("finger2".into(), vec![ring("finger2", 280715)]);
+
+        let count_for = |crests: u64| {
+            let budget: HashMap<u64, u64> = [(3444, crests)].into_iter().collect();
+            let items =
+                crate::game_data::upgrade_items_by_slot_within_budget(&equipped_items, &budget);
+            count_top_gear_combos_with_talents(
+                base,
+                &items,
+                &HashMap::new(),
+                None,
+                &[],
+                None,
+                &GemEnchantOptions::default(),
+                &HashSet::new(),
+                Some(&budget),
+            )
+            .expect("count should succeed")
+        };
+
+        let broke = count_for(19);
+        let one_ring = count_for(60);
+        let both_rings = count_for(120);
+        assert_eq!(broke, 0, "19 crests buys no upgrade, so no combos to sim");
+        assert!(
+            one_ring < both_rings,
+            "raising the budget must admit more combos (60 -> {one_ring}, 120 -> {both_rings})"
+        );
+        assert_eq!(
+            both_rings - one_ring,
+            1,
+            "the extra combo is exactly the both-rings-maxed set (120 crests)"
+        );
+
+        // Results need the per-combo spend, so the metadata must carry it.
+        let budget: HashMap<u64, u64> = [(3444, 120)].into_iter().collect();
+        let items = crate::game_data::upgrade_items_by_slot_within_budget(&equipped_items, &budget);
+        let (_, _, metadata) = generate_top_gear_input_with_talents(
+            base,
+            &items,
+            &HashMap::new(),
+            None,
+            &[],
+            None,
+            &GemEnchantOptions::default(),
+            &HashSet::new(),
+            Some(&budget),
+        )
+        .expect("generate should succeed");
+        let spends: Vec<u64> = metadata
+            .values()
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|it| it.get("upgrade_cost")?.get("3444")?.as_u64())
+                    .sum()
+            })
+            .collect();
+        assert!(
+            spends.contains(&120),
+            "one combo must report both rings maxed at 120 crests: {spends:?}"
+        );
+    }
+
     #[test]
     fn golden_eager_output_snapshot() {
         ensure_game_data_loaded();
@@ -2347,6 +2482,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
             None,
             &gem_opts,
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -2400,6 +2536,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
             None,
             &GemEnchantOptions::default(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -2509,6 +2646,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
                 ..Default::default()
             },
             &HashSet::new(),
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -2534,6 +2672,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
             &gem_opts_a,
             None,
             &HashSet::new(),
+            None,
         );
         let iter_a: Vec<_> = super::ProfilesetIterator::new(cfg_a).collect();
         assert_eq!(
@@ -2585,6 +2724,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
             &gem_opts_b,
             None,
             &HashSet::new(),
+            None,
         );
         let iter_b: Vec<_> = super::ProfilesetIterator::new(cfg_b).collect();
         // There MUST be at least one combo (the alt neck with gem).
@@ -2613,6 +2753,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
             None,
             &gem_opts_b,
             &HashSet::new(),
+            None,
         )
         .unwrap();
         for block in input_b.split("### ").skip(1) {
@@ -2647,6 +2788,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
             None,
             &gem_opts,
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -2660,6 +2802,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
             &gem_opts,
             None,
             &HashSet::new(),
+            None,
         );
         let iter: Vec<_> = super::ProfilesetIterator::new(cfg).collect();
         let iter_bodies: std::collections::BTreeSet<String> = iter
@@ -2720,6 +2863,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
             None,
             &gem_opts,
             &HashSet::new(),
+            None,
         )
         .unwrap();
 
@@ -2746,6 +2890,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
             &gem_opts,
             None,
             &HashSet::new(),
+            None,
         );
         let mut iter = super::ProfilesetIterator::new(cfg);
         iter.set_next_name_idx(2);
@@ -2798,6 +2943,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
             None,
             &gem_opts,
             &HashSet::new(),
+            None,
         )
         .unwrap();
         // emitted profileset blocks = "### Combo " count minus the base actor (Combo 1)
@@ -2821,6 +2967,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
             None,
             &gem_opts,
             &HashSet::new(),
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -2869,6 +3016,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
                 None,
                 &GemEnchantOptions::default(),
                 locked,
+                None,
             )
             .unwrap()
         };
@@ -2904,6 +3052,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
                 &gem_opts,
                 None,
                 &HashSet::new(),
+                None,
             );
             let full = super::ProfilesetIterator::new(cfg.clone()).count();
             let fast = super::ProfilesetIterator::new(cfg).count_emitted();
@@ -2952,6 +3101,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
                 &gem_opts,
                 None,
                 &HashSet::new(),
+                None,
             );
             let full = super::ProfilesetIterator::new(cfg.clone()).count();
             let fast = super::ProfilesetIterator::new(cfg).count_emitted();
@@ -2987,6 +3137,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
                 &gem_opts,
                 None,
                 &HashSet::new(),
+                None,
             );
             let full = super::ProfilesetIterator::new(cfg.clone()).count();
             let fast = super::ProfilesetIterator::new(cfg).count_emitted();

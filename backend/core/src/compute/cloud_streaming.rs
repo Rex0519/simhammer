@@ -2212,6 +2212,7 @@ mod orchestrator_tests {
             talent_builds: vec![],
             max_catalyst_charges: None,
             max_socket_adds: None,
+            upgrade_budget: None,
         }
     }
 
@@ -2342,6 +2343,7 @@ mod orchestrator_tests {
             talent_builds: vec![],
             max_catalyst_charges: None,
             max_socket_adds: None,
+            upgrade_budget: None,
         }
     }
 
@@ -2493,6 +2495,7 @@ mod orchestrator_tests {
             talent_builds: vec![],
             max_catalyst_charges: None,
             max_socket_adds: None,
+            upgrade_budget: None,
         };
 
         let run = CloudStreamingRun {

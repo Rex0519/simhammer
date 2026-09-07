@@ -6,6 +6,7 @@ import TopGearItemSelector from '../components/gear/TopGearItemSelector';
 import AddItemSearch from '../components/gear/AddItemSearch';
 import EnchantSelector from '../components/gear/EnchantSelector';
 import GemSelector from '../components/gear/GemSelector';
+import UpgradeBudgetPanel from '../components/gear/UpgradeBudgetPanel';
 import ConfigFooter from '../components/sim-config/ConfigPanel';
 import TalentPicker from '../components/talents/TalentPicker';
 import ErrorAlert from '../components/ui/ErrorAlert';
@@ -126,6 +127,7 @@ export default function TopGearScreen() {
   const [localItems, setLocalItems] = useState<TopGearLocalItem[]>([]);
   const [addedLootItems, setAddedLootItems] = useState<ResolvedItem[]>([]);
   const [maxUpgrade, setMaxUpgrade] = useState(false);
+  const [upgradeBudget, setUpgradeBudget] = useState<Record<string, number>>({});
   const [copyEnchants, setCopyEnchants] = useState(true);
   const [catalyst, setCatalyst] = useState(false);
   const [catalystCharges, setCatalystCharges] = useState<number | null>(null);
@@ -154,6 +156,7 @@ export default function TopGearScreen() {
     clearTopGearState();
     restoringRef.current = true;
     setMaxUpgrade(saved.maxUpgrade);
+    setUpgradeBudget(saved.upgradeBudget ?? {});
     setCopyEnchants(saved.copyEnchants);
     setCatalyst(saved.catalyst);
     setCatalystCharges(saved.catalystCharges);
@@ -372,6 +375,9 @@ export default function TopGearScreen() {
       selected_items: selectedItemsJson,
       items_by_slot: null,
       max_upgrade: maxUpgrade,
+      ...(maxUpgrade && Object.keys(upgradeBudget).length > 0
+        ? { upgrade_budget: upgradeBudget }
+        : {}),
       copy_enchants: copyEnchants,
       ...(talentBuilds.length > 1
         ? {
@@ -398,6 +404,7 @@ export default function TopGearScreen() {
     submitInput,
     selectedItemsJson,
     maxUpgrade,
+    upgradeBudget,
     copyEnchants,
     talentBuilds,
     catalyst,
@@ -450,6 +457,9 @@ export default function TopGearScreen() {
       selected_items: selectedItemsJson,
       items_by_slot: null,
       max_upgrade: maxUpgrade,
+      ...(maxUpgrade && Object.keys(upgradeBudget).length > 0
+        ? { upgrade_budget: upgradeBudget }
+        : {}),
       copy_enchants: copyEnchants,
       ...(talentBuilds.length > 1
         ? {
@@ -475,6 +485,7 @@ export default function TopGearScreen() {
       submitInput,
       selectedItemsJson,
       maxUpgrade,
+      upgradeBudget,
       copyEnchants,
 
       talentBuilds,
@@ -595,6 +606,7 @@ export default function TopGearScreen() {
       enchantSelections: serializeSelectionMap<number>(enchantSelections),
       gemSelections: [...gemSelections],
       maxUpgrade,
+      upgradeBudget,
       copyEnchants,
       catalyst,
       catalystCharges,
@@ -612,6 +624,7 @@ export default function TopGearScreen() {
     enchantSelections,
     gemSelections,
     maxUpgrade,
+    upgradeBudget,
     copyEnchants,
     catalyst,
     catalystCharges,
@@ -733,6 +746,14 @@ export default function TopGearScreen() {
           <Toggle checked={voidForge} onChange={setVoidForge} label={t('topGear.voidForge')} />
         )}
       </div>
+
+      {maxUpgrade && (
+        <UpgradeBudgetPanel
+          simcInput={simcInput}
+          budget={upgradeBudget}
+          onBudgetChange={setUpgradeBudget}
+        />
+      )}
 
       {!resolved ? (
         <p className="py-6 text-center text-sm text-muted">

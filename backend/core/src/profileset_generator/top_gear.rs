@@ -18,6 +18,7 @@ use crate::types::class_data::{self};
 /// `items_by_slot` get a minimal synthetic item injected so gem/enchant deltas
 /// can still apply. Mirrors production (where `items_by_slot` carries the
 /// equipped item) and lets gem/enchant-only tests pass an empty `items_by_slot`.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_iterator_config(
     base_profile: &str,
     items_by_slot: &HashMap<String, Vec<Value>>,
@@ -26,6 +27,7 @@ pub(crate) fn build_iterator_config(
     gem_opts: &GemEnchantOptions,
     catalyst_charges: Option<u32>,
     locked_slots: &HashSet<String>,
+    upgrade_budget: Option<&HashMap<u64, u64>>,
 ) -> super::iterator::ProfilesetIteratorConfig {
     use super::iterator::{EnchantAxis, GemCombosResolver, ProfilesetIteratorConfig};
 
@@ -221,6 +223,7 @@ pub(crate) fn build_iterator_config(
         talent_builds: talent_builds_owned,
         max_catalyst_charges: catalyst_charges,
         max_socket_adds: gem_opts.socket_budget.filter(|n| *n > 0),
+        upgrade_budget: upgrade_budget.cloned(),
     }
 }
 
@@ -243,6 +246,7 @@ pub fn generate_top_gear_input(
         None,
         &GemEnchantOptions::default(),
         &HashSet::new(),
+        None,
     )
 }
 
@@ -258,6 +262,7 @@ pub fn count_top_gear_combos_with_talents(
     catalyst_charges: Option<u32>,
     gem_opts: &GemEnchantOptions,
     locked_slots: &HashSet<String>,
+    upgrade_budget: Option<&HashMap<u64, u64>>,
 ) -> Result<usize, String> {
     let limit =
         max_combos_override.unwrap_or(MAX_COMBINATIONS.load(std::sync::atomic::Ordering::Relaxed));
@@ -287,6 +292,7 @@ pub fn count_top_gear_combos_with_talents(
         gem_opts,
         catalyst_charges,
         locked_slots,
+        upgrade_budget,
     );
     Ok(super::iterator::ProfilesetIterator::new(cfg).count_emitted())
 }
@@ -304,6 +310,7 @@ pub fn generate_top_gear_input_with_talents(
     catalyst_charges: Option<u32>,
     gem_opts: &GemEnchantOptions,
     locked_slots: &HashSet<String>,
+    upgrade_budget: Option<&HashMap<u64, u64>>,
 ) -> ProfilesetResult {
     let limit =
         max_combos_override.unwrap_or(MAX_COMBINATIONS.load(std::sync::atomic::Ordering::Relaxed));
@@ -407,6 +414,7 @@ pub fn generate_top_gear_input_with_talents(
         gem_opts,
         catalyst_charges,
         locked_slots,
+        upgrade_budget,
     );
 
     // Early-exit if the iterator would emit nothing. Peek with a fresh clone.
