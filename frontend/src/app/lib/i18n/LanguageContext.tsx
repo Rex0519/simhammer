@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 
 import en_US from '../../../locales/en_US.json';
 
-export type Locale = 'en_US' | 'de_DE' | 'es_ES' | 'fr_FR' | 'it_IT' | 'pt_BR' | 'ru_RU';
+export type Locale = 'en_US' | 'de_DE' | 'es_ES' | 'fr_FR' | 'it_IT' | 'pt_BR' | 'ru_RU' | 'zh_CN';
 
 export const LOCALES: { value: Locale; label: string }[] = [
   { value: 'en_US', label: 'English' },
@@ -14,6 +14,7 @@ export const LOCALES: { value: Locale; label: string }[] = [
   { value: 'it_IT', label: 'Italiano' },
   { value: 'pt_BR', label: 'Português' },
   { value: 'ru_RU', label: 'Русский' },
+  { value: 'zh_CN', label: '简体中文' },
 ];
 
 type Translations = Record<string, string>;
@@ -33,6 +34,7 @@ const localeLoaders: Record<Locale, () => Promise<{ default: Translations }>> = 
   it_IT: () => import('../../../locales/it_IT.json'),
   pt_BR: () => import('../../../locales/pt_BR.json'),
   ru_RU: () => import('../../../locales/ru_RU.json'),
+  zh_CN: () => import('../../../locales/zh_CN.json'),
 };
 
 function getStoredLocale(): Locale {
