@@ -66,8 +66,10 @@ fn socket_added_copy(item: &Value) -> Option<Value> {
     Some(copy)
 }
 
-/// Append the socket bonus to a simc line's `bonus_id=` group, keeping the
-/// separator the line already uses; adds the group when the line has none.
+/// Append the socket bonus to a simc line's `bonus_id=` group, joined with `/`
+/// — the only separator SimulationCraft splits `bonus_id=` on. Adds the group
+/// when the line has none, and fills a degenerate empty group without a
+/// leading separator.
 fn append_socket_bonus(simc: &str) -> String {
     let Some(start) = simc.find("bonus_id=") else {
         return format!("{},bonus_id={}", simc, SOCKET_BONUS_ID);
@@ -77,11 +79,7 @@ fn append_socket_bonus(simc: &str) -> String {
         .find(',')
         .map(|i| value_start + i)
         .unwrap_or(simc.len());
-    let sep = if simc[value_start..value_end].contains('/') {
-        "/"
-    } else {
-        ":"
-    };
+    let sep = if value_start == value_end { "" } else { "/" };
     format!(
         "{}{}{}{}",
         &simc[..value_end],
@@ -114,7 +112,7 @@ mod tests {
         assert_eq!(head_items.len(), 2, "expected the original plus one copy");
         let copy = &head_items[1];
         assert_eq!(copy["bonus_ids"], json!([1000, SOCKET_BONUS_ID]));
-        assert_eq!(copy["simc_string"], ",id=100,bonus_id=1000:13668");
+        assert_eq!(copy["simc_string"], ",id=100,bonus_id=1000/13668");
         assert_eq!(copy["sockets"], 1);
         assert_eq!(copy["gem_id"], 0);
         assert_eq!(copy["socket_added"], true);
@@ -140,6 +138,44 @@ mod tests {
         let head = TestItem::new(100).slot("head").sockets(1).build();
         let out = add_socket_candidates(&items("head", head));
         assert_eq!(out["head"].len(), 1);
+    }
+
+    #[test]
+    fn socket_added_survives_into_combo_metadata() {
+        // regression: the socket_added flag must reach the metadata rows
+        // (item_meta -> build_combo_metadata) that the "+socket" chip reads
+        let head = TestItem::new(100).slot("head").build();
+        let out = add_socket_candidates(&items("head", head));
+        let copy = &out["head"][1];
+
+        let rows = crate::profileset_generator::emit::build_combo_metadata(
+            &[("head".to_string(), false, copy)],
+            &[],
+            &[],
+            None,
+            false,
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["socket_added"], true);
+    }
+
+    #[test]
+    fn socket_bonus_is_joined_with_a_slash() {
+        // regression: SimulationCraft splits bonus_id= on '/' only — a ':' separator
+        // would silently drop the socket bonus while the generator still gems the item
+        assert_eq!(
+            append_socket_bonus(",id=100,bonus_id=1000/2000"),
+            ",id=100,bonus_id=1000/2000/13668"
+        );
+        assert_eq!(
+            append_socket_bonus(",id=100,bonus_id=1000,gem_id=42"),
+            ",id=100,bonus_id=1000/13668,gem_id=42"
+        );
+        // regression: an empty bonus_id= group must not gain a leading separator
+        assert_eq!(
+            append_socket_bonus(",id=100,bonus_id=,gem_id=42"),
+            ",id=100,bonus_id=13668,gem_id=42"
+        );
     }
 
     #[test]

@@ -349,6 +349,7 @@
   "topGear.chargesTooltip": "How many catalyst pieces can be worn at the same time in a single gear set.",
   "topGear.addSockets": "Add sockets",
   "topGear.addSocketsHelp": "Assume up to this many unsocketed items get a socket. Select gems below so the socket is filled.",
+  "topGear.socketItems": "items",
   "topGear.voidForge": "Void Forge weapons & trinkets",
   "topGear.runCreditsAvailable": "~{credits} credits · {available} available",
   "topGear.runCreditsOnly": "~{credits} credits",

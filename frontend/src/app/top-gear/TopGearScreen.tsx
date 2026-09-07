@@ -694,6 +694,9 @@ export default function TopGearScreen() {
               }}
               className="w-9 rounded-md border border-outline-variant/30 bg-surface-container px-1 py-1 text-center text-[13px] font-bold tabular-nums text-on-surface outline-none focus:border-gold/40"
             />
+            <span className="text-[11px] text-on-surface-variant/60">
+              {t('topGear.socketItems')}
+            </span>
           </span>
         </Toggle>
         {VOID_FORGE_ENABLED && (

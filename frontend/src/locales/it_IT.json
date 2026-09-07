@@ -289,6 +289,7 @@
   "topGear.chargesTooltip": "Quanti pezzi del catalizzatore possono essere indossati contemporaneamente in un singolo set di equipaggiamento.",
   "topGear.addSockets": "Aggiungi castoni",
   "topGear.addSocketsHelp": "Ipotizza che fino a questo numero di oggetti senza castone ne ricevano uno. Seleziona le gemme qui sotto per riempire il castone.",
+  "topGear.socketItems": "oggetti",
   "topGear.voidForge": "Armi e gingilli Void Forge",
   "topGear.largeLocalSimTitle": "Simulazione molto grande",
   "topGear.largeLocalSimBody": "Verranno simulate circa {count} combinazioni e su questa macchina potrebbero volerci molte ore. Deseleziona qualche oggetto o aumenta l'errore target.",

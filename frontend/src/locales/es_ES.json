@@ -289,6 +289,7 @@
   "topGear.chargesTooltip": "Cuántas piezas de catalizador se pueden llevar al mismo tiempo en un mismo conjunto de equipo.",
   "topGear.addSockets": "Añadir ranuras",
   "topGear.addSocketsHelp": "Supón que hasta esta cantidad de objetos sin ranura reciben una ranura. Selecciona gemas abajo para que la ranura se rellene.",
+  "topGear.socketItems": "objetos",
   "topGear.voidForge": "Armas y abalorios Void Forge",
   "topGear.largeLocalSimTitle": "Simulación muy grande",
   "topGear.largeLocalSimBody": "Se simularán unas {count} combinaciones, lo que puede tardar muchas horas en este equipo. Deselecciona algunos objetos o aumenta el error objetivo.",
