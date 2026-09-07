@@ -148,6 +148,10 @@ pub(super) fn generate_droptimizer_input(
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
         let source_item_id = item.get("source_item_id").and_then(|v| v.as_u64());
+        // Encounter id / instance name only exist on drops that came from the
+        // drops API; the source summary groups by them.
+        let encounter_id = item.get("encounter_id").cloned();
+        let instance_name = item.get("instance_name").cloned();
         // `slot_inherits` is intentionally ignored (kept in the type for API
         // back-compat, no longer authoritative).
         let mut slots = class_data::inv_type_to_slots(inv_type, &spec);
@@ -304,6 +308,8 @@ pub(super) fn generate_droptimizer_input(
                     "gem_id": applied_gem,
                     "is_kept": false,
                     "encounter": encounter,
+                    "encounter_id": encounter_id,
+                    "instance_name": instance_name,
                     "is_void_forge": is_void_forge,
                     "is_catalyst": is_catalyst,
                     "source_item_id": source_item_id,
@@ -1163,5 +1169,26 @@ finger2=,id=102,gem_id=2222\n"; // 2222 is most-used (x2)
         let (_, _, metadata) = generate_droptimizer_input(profile, &drops, None, &HashMap::new());
         let combo = metadata.get("Combo 2").expect("missing combo");
         assert_eq!(combo[0]["encounter"], "Specific Boss Name");
+    }
+
+    // Guards the drop-source summary: it groups by encounter_id and rolls up by
+    // instance_name, so both have to survive the combo metadata stamp.
+    #[test]
+    fn drop_metadata_carries_encounter_id_and_instance_name() {
+        let profile = "mage=test\nspec=frost\nhead=,id=100\n";
+        let drops = vec![json!({
+            "item_id": 999,
+            "ilevel": 600,
+            "name": "Drop",
+            "encounter": "Specific Boss Name",
+            "encounter_id": 2611,
+            "instance_name": "Sporefall",
+            "inventory_type": 1,
+            "bonus_ids": []
+        })];
+        let (_, _, metadata) = generate_droptimizer_input(profile, &drops, None, &HashMap::new());
+        let combo = metadata.get("Combo 2").expect("missing combo");
+        assert_eq!(combo[0]["encounter_id"], 2611);
+        assert_eq!(combo[0]["instance_name"], "Sporefall");
     }
 }
