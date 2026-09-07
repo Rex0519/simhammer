@@ -107,6 +107,13 @@ pub fn build_iterator_from_request_json(json: &str) -> Result<ProfilesetIterator
         .and_then(|v| v.as_u64())
         .map(|n| n as u32);
 
+    // Socket budget under "socket_budget"; the stored items_by_slot already
+    // carries the socket-added copies, so only the gear-set cap is rebuilt here.
+    let socket_budget: Option<u32> = payload
+        .get("socket_budget")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as u32);
+
     // Delegate to the shared builder in top_gear.rs (takes a GemEnchantOptions struct).
     let gem_opts = GemEnchantOptions {
         enchant_selections: Some(&enchant_selections),
@@ -115,6 +122,7 @@ pub fn build_iterator_from_request_json(json: &str) -> Result<ProfilesetIterator
         replace_gems,
         diamond_always_use,
         max_colors,
+        socket_budget,
     };
 
     Ok(super::top_gear::build_iterator_config(
@@ -201,6 +209,30 @@ mod tests {
             cfg.max_catalyst_charges,
             Some(2),
             "resumed config must carry the catalyst budget from the stored envelope"
+        );
+    }
+
+    #[test]
+    fn resume_rebuild_carries_socket_budget() {
+        // regression: a resumed run must keep the socket budget or it emits illegal sets
+        use crate::test_support::ensure_game_data_loaded;
+        ensure_game_data_loaded();
+
+        let envelope = json!({
+            "sim_type": "top_gear",
+            "version": 1,
+            "payload": {
+                "base_profile": "",
+                "items_by_slot": {},
+                "socket_budget": 2u32,
+            }
+        });
+        let cfg = build_iterator_from_request_json(&envelope.to_string())
+            .expect("rebuild should succeed");
+        assert_eq!(
+            cfg.max_socket_adds,
+            Some(2),
+            "resumed config must carry the socket budget from the stored envelope"
         );
     }
 

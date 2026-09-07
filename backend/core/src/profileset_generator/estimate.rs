@@ -31,13 +31,22 @@ fn gear_axis_size(
     // For each slot in selected_items: number of selected alternatives + 1 (equipped).
     // For each slot NOT in selected_items: 1 (equipped only).
     let mut prod: u64 = 1;
-    for slot in items_by_slot.keys() {
+    for (slot, items) in items_by_slot {
         let selected = selected_items.get(slot).map(|v| v.len()).unwrap_or(0);
-        let axis = if selected == 0 {
+        let mut axis = if selected == 0 {
             1
         } else {
             selected as u64 + 1
         };
+        // Socket-added copies double a slot at most: every candidate that
+        // survives selection can carry one socketed twin.
+        if items.iter().any(|it| {
+            it.get("socket_added")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+        }) {
+            axis = axis.saturating_mul(2);
+        }
         prod = prod.saturating_mul(axis);
     }
     prod
@@ -67,10 +76,14 @@ fn gem_axis_size_upper_bound(
     let mut socketed_slots: u64 = 0;
     for items in items_by_slot.values() {
         let any_socketed = items.iter().any(|it| {
-            it.get("item_id")
-                .and_then(|v| v.as_u64())
-                .map(|id| socketed_item_ids.contains(&id))
-                .unwrap_or(false)
+            // Socket-added copies carry their socket inline rather than through
+            // socketed_item_ids (their item id is shared with the unsocketed twin).
+            it.get("sockets").and_then(|v| v.as_u64()).unwrap_or(0) > 0
+                || it
+                    .get("item_id")
+                    .and_then(|v| v.as_u64())
+                    .map(|id| socketed_item_ids.contains(&id))
+                    .unwrap_or(false)
         });
         if any_socketed {
             socketed_slots += 1;

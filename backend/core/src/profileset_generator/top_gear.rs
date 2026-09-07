@@ -219,6 +219,7 @@ pub(crate) fn build_iterator_config(
         socketed_item_ids: socketed_ids_owned,
         talent_builds: talent_builds_owned,
         max_catalyst_charges: catalyst_charges,
+        max_socket_adds: gem_opts.socket_budget.filter(|n| *n > 0),
     }
 }
 

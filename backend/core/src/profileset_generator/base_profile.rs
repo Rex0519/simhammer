@@ -68,6 +68,13 @@ pub(super) fn item_meta(item: &Value, slot: &str) -> Value {
             .cloned()
             .unwrap_or_else(|| json!(0));
     }
+    if item
+        .get("socket_added")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        meta["socket_added"] = json!(true);
+    }
     meta
 }
 

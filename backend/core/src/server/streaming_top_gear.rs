@@ -106,6 +106,7 @@ pub(super) async fn start_streaming_top_gear_job(mut start: StreamingTopGearStar
         replace_gems: req.replace_gems,
         diamond_always_use: req.diamond_always_use,
         max_colors: req.max_colors,
+        socket_budget: req.socket_budget,
     };
     let iter_cfg = profileset_generator::build_iterator_config(
         &base_profile,
@@ -151,6 +152,7 @@ pub(super) async fn start_streaming_top_gear_job(mut start: StreamingTopGearStar
             "base_profile": base_profile,
             "max_combinations": max_combinations,
             "void_forge": req.void_forge,
+            "socket_budget": req.socket_budget,
             "options": req.options.to_json(),
             "streaming": true,
             "estimate": estimate,

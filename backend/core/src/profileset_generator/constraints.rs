@@ -17,10 +17,13 @@ pub(super) struct GearSetContext<'a> {
     /// all (Drop Finder, Crest Upgrades), so the check is skipped rather
     /// than vacuously failed on an unrelated profile.
     pub max_catalyst_charges: Option<u32>,
+    /// Socket budget for the "add up to N sockets" option. `None` = the request
+    /// never asked for added sockets, so the check is skipped.
+    pub max_socket_adds: Option<u32>,
 }
 
 /// Single funnel every generator must call before emitting a gear set. Aggregates
-/// unique-equipped, item-limit, vault, weapon-pairing, and catalyst checks so a
+/// unique-equipped, item-limit, vault, weapon-pairing, catalyst, and socket-budget checks so a
 /// new constraint is a one-edit change. See `feedback_gear_validation_unified`.
 pub(super) fn is_legal_gear_set<V: Borrow<Value>>(
     gear_set: &HashMap<String, V>,
@@ -40,6 +43,11 @@ pub(super) fn is_legal_gear_set<V: Borrow<Value>>(
     }
     if let Some(charges) = ctx.max_catalyst_charges {
         if !validate_catalyst_constraint(gear_set, charges) {
+            return false;
+        }
+    }
+    if let Some(adds) = ctx.max_socket_adds {
+        if !validate_socket_budget(gear_set, adds) {
             return false;
         }
     }
@@ -75,6 +83,24 @@ pub(super) fn validate_catalyst_constraint<V: Borrow<Value>>(
         })
         .count() as u32;
     catalyst_count <= max_charges
+}
+
+/// Cap on socket-added items ("add up to N sockets"): each copy carries
+/// `socket_added`, so the check is a count against the requested budget.
+pub(super) fn validate_socket_budget<V: Borrow<Value>>(
+    gear_set: &HashMap<String, V>,
+    max_adds: u32,
+) -> bool {
+    let socket_added_count = gear_set
+        .values()
+        .filter(|item| {
+            let v: &Value = (*item).borrow();
+            v.get("socket_added")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+        })
+        .count() as u32;
+    socket_added_count <= max_adds
 }
 
 pub(super) fn validate_weapon_constraint<V: Borrow<Value>>(
@@ -194,6 +220,11 @@ mod tests {
     fn item_with_catalyst(id: u64) -> Value {
         TestItem::new(id).catalyst().build()
     }
+    fn item_with_socket_added(id: u64) -> Value {
+        let mut v = TestItem::new(id).sockets(1).build();
+        v["socket_added"] = serde_json::json!(true);
+        v
+    }
 
     #[test]
     fn embellishment_limit_rejects_three_embellished_items() {
@@ -279,6 +310,23 @@ mod tests {
         let mut gs = HashMap::new();
         gs.insert("head".to_string(), item(1));
         assert!(validate_catalyst_constraint(&gs, 0));
+    }
+
+    #[test]
+    fn socket_budget_rejects_more_socket_adds_than_budget() {
+        // regression: "add up to N sockets" must not wear N+1 socket-added items at once
+        let mut gs = HashMap::new();
+        gs.insert("head".to_string(), item_with_socket_added(1));
+        gs.insert("wrist".to_string(), item_with_socket_added(2));
+        assert!(!validate_socket_budget(&gs, 1));
+    }
+
+    #[test]
+    fn socket_budget_accepts_socket_adds_at_limit() {
+        let mut gs = HashMap::new();
+        gs.insert("head".to_string(), item_with_socket_added(1));
+        gs.insert("wrist".to_string(), item_with_socket_added(2));
+        assert!(validate_socket_budget(&gs, 2));
     }
 
     #[test]

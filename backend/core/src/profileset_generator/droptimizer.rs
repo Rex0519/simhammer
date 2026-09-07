@@ -48,6 +48,7 @@ fn drop_combo_is_valid(
         &GearSetContext {
             spec,
             max_catalyst_charges: None,
+            max_socket_adds: None,
         },
     )
 }

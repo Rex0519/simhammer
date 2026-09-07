@@ -80,6 +80,9 @@ pub struct ProfilesetIteratorConfig {
     /// Catalyst budget for the gear-validator. `None` = request has no catalyst
     /// (mirrors the eager path's `GearSetContext`).
     pub max_catalyst_charges: Option<u32>,
+    /// Socket budget for the gear-validator: how many socket-added items may be
+    /// worn at once. `None` = the request didn't ask for added sockets.
+    pub max_socket_adds: Option<u32>,
 }
 
 // ── Internal evaluation result ────────────────────────────────────────────────
@@ -263,6 +266,7 @@ impl ProfilesetIterator {
             &super::constraints::GearSetContext {
                 spec: &self.cfg.spec,
                 max_catalyst_charges: self.cfg.max_catalyst_charges,
+                max_socket_adds: self.cfg.max_socket_adds,
             },
         ) {
             return None;
@@ -707,6 +711,7 @@ mod tests {
             socketed_item_ids: HashSet::new(),
             talent_builds: vec![],
             max_catalyst_charges: None,
+            max_socket_adds: None,
         }
     }
 
@@ -723,6 +728,7 @@ mod tests {
             socketed_item_ids: HashSet::new(),
             talent_builds: vec![],
             max_catalyst_charges: None,
+            max_socket_adds: None,
         };
         let iter = ProfilesetIterator::new(cfg);
         assert_eq!(iter.count(), 0);
@@ -760,6 +766,7 @@ mod tests {
             socketed_item_ids,
             talent_builds: vec![],
             max_catalyst_charges: None,
+            max_socket_adds: None,
         };
 
         let yielded: Vec<_> = ProfilesetIterator::new(cfg).collect();
@@ -810,6 +817,7 @@ mod tests {
             socketed_item_ids,
             talent_builds: vec![],
             max_catalyst_charges: None,
+            max_socket_adds: None,
         };
         ProfilesetIterator::new(cfg).collect()
     }
@@ -871,6 +879,7 @@ mod tests {
             socketed_item_ids,
             talent_builds: vec![],
             max_catalyst_charges: None,
+            max_socket_adds: None,
         };
 
         let mut it = ProfilesetIterator::new(cfg);
@@ -992,6 +1001,7 @@ mod tests {
                 socketed_item_ids: HashSet::new(),
                 talent_builds: vec![],
                 max_catalyst_charges: budget,
+                max_socket_adds: None,
             }
         };
 
@@ -1010,6 +1020,50 @@ mod tests {
             without_budget - with_budget,
             1,
             "budget=1 must filter exactly the double-catalyst combo that budget=None admits"
+        );
+    }
+
+    #[test]
+    fn streaming_iterator_enforces_socket_budget() {
+        // regression: the socket budget must cap how many socket-added items a set wears
+        use crate::test_support::{ensure_game_data_loaded, TestItem};
+        ensure_game_data_loaded();
+
+        let socket_added = |id: u64| {
+            let mut v = TestItem::new(id).sockets(1).build();
+            v["socket_added"] = json!(true);
+            Arc::new(v)
+        };
+        let make_cfg = |budget: Option<u32>| {
+            let mut slot_item_lists: HashMap<String, Vec<Arc<Value>>> = HashMap::new();
+            slot_item_lists.insert(
+                "head".into(),
+                vec![Arc::new(TestItem::new(102).build()), socket_added(102)],
+            );
+            slot_item_lists.insert(
+                "wrist".into(),
+                vec![Arc::new(TestItem::new(202).build()), socket_added(202)],
+            );
+            ProfilesetIteratorConfig {
+                spec: "arms".into(),
+                base_profile: Arc::from(""),
+                slot_item_lists,
+                varying_slots: vec!["head".into(), "wrist".into()],
+                enchant_axes: vec![],
+                gem_combo_count: 0,
+                gem_combos_resolver: GemCombosResolver::new(vec![]),
+                socketed_item_ids: HashSet::new(),
+                talent_builds: vec![],
+                max_catalyst_charges: None,
+                max_socket_adds: budget,
+            }
+        };
+
+        let count = |budget| ProfilesetIterator::new(make_cfg(budget)).count();
+        assert_eq!(
+            count(Some(2)) - count(Some(1)),
+            1,
+            "budget=1 must filter exactly the two-socket combo that budget=2 admits"
         );
     }
 
