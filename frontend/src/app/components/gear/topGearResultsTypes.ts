@@ -4,6 +4,9 @@ import type { GearItem } from './gearOverviewTypes';
 export interface ResultItem extends GearItem {
   encounter?: string;
   type?: 'enchant' | 'gem';
+  /** Talent Compare only: the build's talent export string, stamped onto the
+   *  combo metadata by the handler so the results page can diff rows. */
+  talent_string?: string;
 }
 
 export interface TopGearResult {
