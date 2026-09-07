@@ -14,6 +14,10 @@ export interface GearItem {
   gem_ids?: number[];
   is_kept?: boolean;
   upgrade_levels?: number;
+  /** Set on a budgeted upgrade variant (#144). */
+  upgraded?: boolean;
+  /** Crest cost of that upgrade, by currency id. */
+  upgrade_cost?: Record<string, number>;
   origin?: string;
 }
 

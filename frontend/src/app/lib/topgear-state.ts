@@ -9,6 +9,8 @@ export interface TopGearSavedState {
   enchantSelections: Record<string, number[]>;
   gemSelections: number[];
   maxUpgrade: boolean;
+  /** Crest budget by currency id; absent on state saved before #144. */
+  upgradeBudget?: Record<string, number>;
   copyEnchants: boolean;
   catalyst: boolean;
   catalystCharges: number | null;

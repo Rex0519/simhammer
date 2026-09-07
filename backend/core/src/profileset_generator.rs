@@ -2192,6 +2192,34 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
             1,
             "the extra combo is exactly the both-rings-maxed set (120 crests)"
         );
+
+        // Results need the per-combo spend, so the metadata must carry it.
+        let budget: HashMap<u64, u64> = [(3444, 120)].into_iter().collect();
+        let items = crate::game_data::upgrade_items_by_slot_within_budget(&equipped_items, &budget);
+        let (_, _, metadata) = generate_top_gear_input_with_talents(
+            base,
+            &items,
+            &HashMap::new(),
+            None,
+            &[],
+            None,
+            &GemEnchantOptions::default(),
+            Some(&budget),
+        )
+        .expect("generate should succeed");
+        let spends: Vec<u64> = metadata
+            .values()
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|it| it.get("upgrade_cost")?.get("3444")?.as_u64())
+                    .sum()
+            })
+            .collect();
+        assert!(
+            spends.contains(&120),
+            "one combo must report both rings maxed at 120 crests: {spends:?}"
+        );
     }
 
     #[test]
