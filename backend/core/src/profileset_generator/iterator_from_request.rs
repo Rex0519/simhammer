@@ -100,6 +100,18 @@ pub fn build_iterator_from_request_json(json: &str) -> Result<ProfilesetIterator
         })
         .unwrap_or_default();
 
+    // Locked slots (#146). Absent in envelopes written before the feature, so an
+    // empty set means "nothing locked" and reproduces the original space.
+    let locked_slots: HashSet<String> = payload
+        .get("locked_slots")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
     // Catalyst budget under "catalyst_charges" (written by streaming_top_gear.rs).
     // `None` is preserved so the resumed job is identical.
     let catalyst_charges: Option<u32> = payload
@@ -124,6 +136,7 @@ pub fn build_iterator_from_request_json(json: &str) -> Result<ProfilesetIterator
         &talent_builds,
         &gem_opts,
         catalyst_charges,
+        &locked_slots,
     ))
 }
 
@@ -201,6 +214,34 @@ mod tests {
             cfg.max_catalyst_charges,
             Some(2),
             "resumed config must carry the catalyst budget from the stored envelope"
+        );
+    }
+
+    #[test]
+    fn resume_rebuild_carries_locked_slots() {
+        use crate::test_support::{ensure_game_data_loaded, TestItem};
+        ensure_game_data_loaded();
+
+        // regression for #146: a resumed run must not re-vary a slot the original
+        // request locked, so the locked slot stays out of `varying_slots`.
+        let equipped = TestItem::new(100).slot("head").equipped().build();
+        let alt = TestItem::new(200).slot("head").build();
+        let envelope = json!({
+            "sim_type": "top_gear",
+            "version": 1,
+            "payload": {
+                "base_profile": "mage=test\n",
+                "items_by_slot": { "head": [equipped, alt] },
+                "selected_items": { "head": ["200::bags:head"] },
+                "locked_slots": ["head"],
+            }
+        });
+        let cfg = build_iterator_from_request_json(&envelope.to_string())
+            .expect("rebuild should succeed");
+        assert!(
+            !cfg.varying_slots.contains(&"head".to_string()),
+            "locked head must not vary after resume, got {:?}",
+            cfg.varying_slots
         );
     }
 

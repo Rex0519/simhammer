@@ -1,5 +1,5 @@
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::base_profile::{item_meta, parse_base_profile};
@@ -25,6 +25,7 @@ pub(crate) fn build_iterator_config(
     talent_builds: &[(String, String)],
     gem_opts: &GemEnchantOptions,
     catalyst_charges: Option<u32>,
+    locked_slots: &HashSet<String>,
 ) -> super::iterator::ProfilesetIteratorConfig {
     use super::iterator::{EnchantAxis, GemCombosResolver, ProfilesetIteratorConfig};
 
@@ -38,7 +39,7 @@ pub(crate) fn build_iterator_config(
     let (_, equipped_gear, _, spec) = parse_base_profile(base_profile);
 
     let mut slot_item_lists: HashMap<String, Vec<Arc<Value>>> =
-        build_slot_candidates(base_profile, items_by_slot, selected_items)
+        build_slot_candidates(base_profile, items_by_slot, selected_items, locked_slots)
             .into_iter()
             .map(|(k, v)| (k, v.into_iter().map(Arc::new).collect()))
             .collect();
@@ -240,11 +241,13 @@ pub fn generate_top_gear_input(
         &[],
         None,
         &GemEnchantOptions::default(),
+        &HashSet::new(),
     )
 }
 
 /// Count-only variant. Gates on the O(axes) analytic upper-bound, then walks the
 /// full iterator for the exact count — cheaper than the full emit pipeline.
+#[allow(clippy::too_many_arguments)]
 pub fn count_top_gear_combos_with_talents(
     base_profile: &str,
     items_by_slot: &HashMap<String, Vec<Value>>,
@@ -253,6 +256,7 @@ pub fn count_top_gear_combos_with_talents(
     talent_builds: &[(String, String)],
     catalyst_charges: Option<u32>,
     gem_opts: &GemEnchantOptions,
+    locked_slots: &HashSet<String>,
 ) -> Result<usize, String> {
     let limit =
         max_combos_override.unwrap_or(MAX_COMBINATIONS.load(std::sync::atomic::Ordering::Relaxed));
@@ -281,6 +285,7 @@ pub fn count_top_gear_combos_with_talents(
         talent_builds,
         gem_opts,
         catalyst_charges,
+        locked_slots,
     );
     Ok(super::iterator::ProfilesetIterator::new(cfg).count_emitted())
 }
@@ -297,6 +302,7 @@ pub fn generate_top_gear_input_with_talents(
     talent_builds: &[(String, String)],
     catalyst_charges: Option<u32>,
     gem_opts: &GemEnchantOptions,
+    locked_slots: &HashSet<String>,
 ) -> ProfilesetResult {
     let limit =
         max_combos_override.unwrap_or(MAX_COMBINATIONS.load(std::sync::atomic::Ordering::Relaxed));
@@ -352,7 +358,8 @@ pub fn generate_top_gear_input_with_talents(
 
     // Paired display slots (finger/trinket baseline metadata) via the same
     // build_slot_candidates resolution the iterator uses.
-    let slot_item_lists_raw = build_slot_candidates(base_profile, items_by_slot, selected_items);
+    let slot_item_lists_raw =
+        build_slot_candidates(base_profile, items_by_slot, selected_items, locked_slots);
 
     // Baseline metadata for "Currently Equipped" / "Currently Equipped ({talent})"
     let paired_display_slots = ["finger1", "finger2", "trinket1", "trinket2"];
@@ -398,6 +405,7 @@ pub fn generate_top_gear_input_with_talents(
         talent_builds,
         gem_opts,
         catalyst_charges,
+        locked_slots,
     );
 
     // Early-exit if the iterator would emit nothing. Peek with a fresh clone.

@@ -142,6 +142,8 @@ pub(super) async fn cloud_estimate_top_gear(
     let talent_builds = normalized_talent_builds(&req.talent_builds);
     let max_combinations = capped_max_combinations(req.max_combinations);
     let socketed_ids = socketed_item_ids(&resolved);
+    let locked_slots: std::collections::HashSet<String> =
+        req.locked_slots.iter().cloned().collect();
     let gem_opts = profileset_generator::GemEnchantOptions {
         enchant_selections: Some(&req.enchant_selections),
         gem_options: &req.gem_options,
@@ -159,6 +161,7 @@ pub(super) async fn cloud_estimate_top_gear(
         &talent_builds,
         catalyst_charges,
         &gem_opts,
+        &locked_slots,
     ) {
         Ok(n) => n as u64,
         Err(e) => {

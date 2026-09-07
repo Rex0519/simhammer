@@ -87,10 +87,13 @@ fn uid_identity(uid: &str) -> String {
         .join(":")
 }
 
+/// `locked_slots` holds real slot names (`finger2`, `trinket1`, …): a locked
+/// slot keeps only its equipped item, so it never enters `varying_slots`.
 pub(super) fn build_slot_candidates(
     base_profile: &str,
     items_by_slot: &HashMap<String, Vec<Value>>,
     selected_items: &HashMap<String, Vec<String>>,
+    locked_slots: &HashSet<String>,
 ) -> HashMap<String, Vec<Value>> {
     let mut slot_item_lists: HashMap<String, Vec<Value>> = HashMap::new();
 
@@ -130,6 +133,13 @@ pub(super) fn build_slot_candidates(
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false)
         });
+
+        if locked_slots.contains(&slot) {
+            if let Some(eq) = equipped {
+                slot_item_lists.insert(slot, vec![eq.clone()]);
+            }
+            continue;
+        }
 
         if let Some(eq) = equipped {
             let already_included = candidates.iter().any(|c| {
@@ -222,7 +232,8 @@ mod tests {
         let equipped = make(100, "head", true, vec![]);
         let mut items_by_slot = HashMap::new();
         items_by_slot.insert("head".to_string(), vec![equipped]);
-        let result = build_slot_candidates(profile, &items_by_slot, &HashMap::new());
+        let result =
+            build_slot_candidates(profile, &items_by_slot, &HashMap::new(), &HashSet::new());
         let head = result.get("head").expect("head missing");
         assert_eq!(head.len(), 1);
         assert_eq!(head[0]["item_id"], 100);
@@ -240,7 +251,7 @@ mod tests {
         let mut selected = HashMap::new();
         selected.insert("head".to_string(), vec![uid_str(200, &[], "bags", "head")]);
 
-        let result = build_slot_candidates(profile, &items_by_slot, &selected);
+        let result = build_slot_candidates(profile, &items_by_slot, &selected, &HashSet::new());
         let head = result.get("head").expect("head missing");
         assert_eq!(head.len(), 2);
         // Equipped should be first (inserted at index 0)
@@ -257,7 +268,8 @@ mod tests {
         let mut items_by_slot = HashMap::new();
         items_by_slot.insert("head".to_string(), vec![equipped, alt]);
 
-        let result = build_slot_candidates(profile, &items_by_slot, &HashMap::new());
+        let result =
+            build_slot_candidates(profile, &items_by_slot, &HashMap::new(), &HashSet::new());
         let head = result.get("head").expect("head missing");
         // Only equipped — alt was not selected
         assert_eq!(head.len(), 1);
@@ -284,7 +296,7 @@ mod tests {
             vec![uid_str(999, &[], "bags", "finger1")],
         );
 
-        let result = build_slot_candidates(profile, &items_by_slot, &selected);
+        let result = build_slot_candidates(profile, &items_by_slot, &selected, &HashSet::new());
         let f2 = result.get("finger2").expect("finger2 missing");
         // finger2 should include the 999 alt because its identity matches the finger1 selection
         assert!(
@@ -312,7 +324,7 @@ mod tests {
             vec!["271564:12852:bags:head:251199".to_string()],
         );
 
-        let result = build_slot_candidates(profile, &items_by_slot, &selected);
+        let result = build_slot_candidates(profile, &items_by_slot, &selected, &HashSet::new());
         let head = result.get("head").expect("head missing");
         assert!(
             head.iter().any(|i| i["item_id"] == 271564),
@@ -330,7 +342,8 @@ mod tests {
         let mut items_by_slot = HashMap::new();
         items_by_slot.insert("head".to_string(), vec![equipped]);
 
-        let result = build_slot_candidates(profile, &items_by_slot, &HashMap::new());
+        let result =
+            build_slot_candidates(profile, &items_by_slot, &HashMap::new(), &HashSet::new());
         let head = result.get("head").expect("head missing");
         // Equipped is always retained regardless of armor class.
         assert_eq!(head.len(), 1);
@@ -341,7 +354,8 @@ mod tests {
         ensure_game_data_loaded();
         let profile = "mage=test\n";
         let items_by_slot: HashMap<String, Vec<Value>> = HashMap::new();
-        let result = build_slot_candidates(profile, &items_by_slot, &HashMap::new());
+        let result =
+            build_slot_candidates(profile, &items_by_slot, &HashMap::new(), &HashSet::new());
         assert!(result.is_empty());
     }
 
@@ -360,9 +374,91 @@ mod tests {
             vec![uid_str(100, &[], "equipped", "head")],
         );
 
-        let result = build_slot_candidates(profile, &items_by_slot, &selected);
+        let result = build_slot_candidates(profile, &items_by_slot, &selected, &HashSet::new());
         let head = result.get("head").expect("head missing");
         assert_eq!(head.len(), 1, "equipped should not appear twice");
+    }
+
+    #[test]
+    fn locked_slot_keeps_only_equipped_item() {
+        ensure_game_data_loaded();
+        // regression for #146: a locked slot must not vary even when alternatives are selected
+        let profile = "mage=test\n";
+        let equipped = make(100, "head", true, vec![]);
+        let alt = make(200, "head", false, vec![]);
+        let mut items_by_slot = HashMap::new();
+        items_by_slot.insert("head".to_string(), vec![equipped, alt]);
+
+        let mut selected = HashMap::new();
+        selected.insert("head".to_string(), vec![uid_str(200, &[], "bags", "head")]);
+
+        let locked: HashSet<String> = ["head".to_string()].into_iter().collect();
+        let result = build_slot_candidates(profile, &items_by_slot, &selected, &locked);
+        let head = result.get("head").expect("head missing");
+        assert_eq!(
+            head.len(),
+            1,
+            "locked slot must keep only the equipped item"
+        );
+        assert!(head[0]["is_equipped"].as_bool().unwrap());
+        assert_eq!(head[0]["item_id"], 100);
+    }
+
+    #[test]
+    fn locking_finger2_leaves_finger1_varying() {
+        ensure_game_data_loaded();
+        // paired slots: lock one ring, the other still takes the selected alternative
+        let profile = "mage=test\n";
+        let f1_eq = make(100, "finger1", true, vec![]);
+        let f1_alt = make(999, "finger1", false, vec![]);
+        let f2_eq = make(101, "finger2", true, vec![]);
+        let f2_alt = make(999, "finger2", false, vec![]);
+        let mut items_by_slot = HashMap::new();
+        items_by_slot.insert("finger1".to_string(), vec![f1_eq, f1_alt]);
+        items_by_slot.insert("finger2".to_string(), vec![f2_eq, f2_alt]);
+
+        let mut selected = HashMap::new();
+        selected.insert(
+            "finger1".to_string(),
+            vec![uid_str(999, &[], "bags", "finger1")],
+        );
+
+        let locked: HashSet<String> = ["finger2".to_string()].into_iter().collect();
+        let result = build_slot_candidates(profile, &items_by_slot, &selected, &locked);
+        let f2 = result.get("finger2").expect("finger2 missing");
+        assert_eq!(
+            f2.len(),
+            1,
+            "locked finger2 must keep only the equipped ring"
+        );
+        assert_eq!(f2[0]["item_id"], 101);
+        let f1 = result.get("finger1").expect("finger1 missing");
+        assert_eq!(
+            f1.len(),
+            2,
+            "finger1 must still vary while finger2 is locked"
+        );
+    }
+
+    #[test]
+    fn locking_a_slot_without_equipped_item_drops_it() {
+        ensure_game_data_loaded();
+        // regression for #146: an empty slot has nothing to keep, so it must not
+        // silently fall back to varying over the selected alternatives.
+        let profile = "mage=test\n";
+        let alt = make(200, "head", false, vec![]);
+        let mut items_by_slot = HashMap::new();
+        items_by_slot.insert("head".to_string(), vec![alt]);
+
+        let mut selected = HashMap::new();
+        selected.insert("head".to_string(), vec![uid_str(200, &[], "bags", "head")]);
+
+        let locked: HashSet<String> = ["head".to_string()].into_iter().collect();
+        let result = build_slot_candidates(profile, &items_by_slot, &selected, &locked);
+        assert!(
+            !result.contains_key("head"),
+            "a locked slot with no equipped item must contribute no candidates"
+        );
     }
 
     #[test]
@@ -383,7 +479,7 @@ mod tests {
             vec!["100::bags:neck:m:e7340:g213473".to_string()],
         );
 
-        let result = build_slot_candidates(profile, &items_by_slot, &selected);
+        let result = build_slot_candidates(profile, &items_by_slot, &selected, &HashSet::new());
         let neck = result.get("neck").expect("neck missing");
         assert_eq!(neck.len(), 2, "manual copy must match via its stored uid");
     }
