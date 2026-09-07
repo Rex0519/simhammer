@@ -129,6 +129,8 @@ export default function TopGearScreen() {
   const [copyEnchants, setCopyEnchants] = useState(true);
   const [catalyst, setCatalyst] = useState(false);
   const [catalystCharges, setCatalystCharges] = useState<number | null>(null);
+  const [addSockets, setAddSockets] = useState(false);
+  const [socketBudget, setSocketBudget] = useState(1);
   const [voidForge, _setVoidForge] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [enchantSelections, setEnchantSelections] = useState<Record<string, Set<number>>>({});
@@ -155,6 +157,8 @@ export default function TopGearScreen() {
     setCopyEnchants(saved.copyEnchants);
     setCatalyst(saved.catalyst);
     setCatalystCharges(saved.catalystCharges);
+    setAddSockets(saved.addSockets ?? false);
+    setSocketBudget(saved.socketBudget ?? 1);
     setReplaceGems(saved.replaceGems);
     setDiamondAlwaysUse(saved.diamondAlwaysUse);
     setMaxColors(saved.maxColors);
@@ -368,6 +372,7 @@ export default function TopGearScreen() {
         : {}),
       catalyst,
       ...(catalystCharges != null ? { catalyst_charges: catalystCharges } : {}),
+      ...(addSockets ? { socket_budget: socketBudget } : {}),
       enchant_selections: enchantSelectionsArray,
       gem_options: gemOptionsArray,
       replace_gems: replaceGems,
@@ -386,6 +391,8 @@ export default function TopGearScreen() {
     talentBuilds,
     catalyst,
     catalystCharges,
+    addSockets,
+    socketBudget,
     enchantSelectionsArray,
     gemOptionsArray,
     replaceGems,
@@ -443,6 +450,7 @@ export default function TopGearScreen() {
         : {}),
       catalyst,
       ...(catalystCharges != null ? { catalyst_charges: catalystCharges } : {}),
+      ...(addSockets ? { socket_budget: socketBudget } : {}),
       enchant_selections: enchantSelectionsArray,
       gem_options: gemOptionsArray,
       replace_gems: replaceGems,
@@ -461,6 +469,8 @@ export default function TopGearScreen() {
       talentBuilds,
       catalyst,
       catalystCharges,
+      addSockets,
+      socketBudget,
       enchantSelectionsArray,
       gemOptionsArray,
       replaceGems,
@@ -577,6 +587,8 @@ export default function TopGearScreen() {
       copyEnchants,
       catalyst,
       catalystCharges,
+      addSockets,
+      socketBudget,
       replaceGems,
       diamondAlwaysUse,
       maxColors,
@@ -592,6 +604,8 @@ export default function TopGearScreen() {
     copyEnchants,
     catalyst,
     catalystCharges,
+    addSockets,
+    socketBudget,
     replaceGems,
     diamondAlwaysUse,
     maxColors,
@@ -681,6 +695,29 @@ export default function TopGearScreen() {
             </span>
           </Toggle>
         )}
+        <Toggle
+          checked={addSockets}
+          onChange={setAddSockets}
+          label={t('topGear.addSockets')}
+          tooltip={t('topGear.addSocketsHelp')}
+        >
+          <span onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
+            <input
+              type="number"
+              min={1}
+              max={6}
+              value={socketBudget}
+              onChange={(event) => {
+                const value = parseInt(event.target.value, 10);
+                if (!Number.isNaN(value) && value >= 1 && value <= 6) setSocketBudget(value);
+              }}
+              className="w-9 rounded-md border border-outline-variant/30 bg-surface-container px-1 py-1 text-center text-[13px] font-bold tabular-nums text-on-surface outline-none focus:border-gold/40"
+            />
+            <span className="text-[11px] text-on-surface-variant/60">
+              {t('topGear.socketItems')}
+            </span>
+          </span>
+        </Toggle>
         {VOID_FORGE_ENABLED && (
           <Toggle checked={voidForge} onChange={setVoidForge} label={t('topGear.voidForge')} />
         )}

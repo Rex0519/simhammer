@@ -184,6 +184,10 @@ pub struct TopGearRequest {
     /// When true, generate Void Forge candidates for eligible slots
     #[serde(default)]
     pub void_forge: bool,
+    /// How many currently unsocketed items may be assumed to gain a socket
+    /// ("add up to N sockets"). `None`/`Some(0)` = off.
+    #[serde(default)]
+    pub socket_budget: Option<u32>,
     /// Real slot names (`finger2`, `trinket1`, …) pinned to their equipped item.
     /// A locked slot never varies; unknown names are ignored.
     #[serde(default)]

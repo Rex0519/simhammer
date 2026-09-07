@@ -112,6 +112,12 @@ pub fn build_iterator_from_request_json(json: &str) -> Result<ProfilesetIterator
         })
         .unwrap_or_default();
 
+    // Socket budget under "socket_budget" (written by the top-gear envelopes).
+    let socket_budget: Option<u32> = payload
+        .get("socket_budget")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as u32);
+
     // Catalyst budget under "catalyst_charges" (written by streaming_top_gear.rs).
     // `None` is preserved so the resumed job is identical.
     let catalyst_charges: Option<u32> = payload
@@ -127,6 +133,7 @@ pub fn build_iterator_from_request_json(json: &str) -> Result<ProfilesetIterator
         replace_gems,
         diamond_always_use,
         max_colors,
+        socket_budget,
     };
 
     Ok(super::top_gear::build_iterator_config(
@@ -264,6 +271,30 @@ mod tests {
         assert_eq!(
             cfg.max_catalyst_charges, None,
             "resumed config without catalyst_charges must be None"
+        );
+    }
+
+    #[test]
+    fn resume_rebuild_carries_socket_budget() {
+        // regression: a resumed run must keep the socket budget or it emits illegal sets
+        use crate::test_support::ensure_game_data_loaded;
+        ensure_game_data_loaded();
+
+        let envelope = json!({
+            "sim_type": "top_gear",
+            "version": 1,
+            "payload": {
+                "base_profile": "",
+                "items_by_slot": {},
+                "socket_budget": 2u32,
+            }
+        });
+        let cfg = build_iterator_from_request_json(&envelope.to_string())
+            .expect("rebuild should succeed");
+        assert_eq!(
+            cfg.max_socket_adds,
+            Some(2),
+            "resumed config must carry the socket budget from the stored envelope"
         );
     }
 }

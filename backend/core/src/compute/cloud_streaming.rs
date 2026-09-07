@@ -2211,6 +2211,7 @@ mod orchestrator_tests {
             socketed_item_ids: HashSet::new(),
             talent_builds: vec![],
             max_catalyst_charges: None,
+            max_socket_adds: None,
         }
     }
 
@@ -2340,6 +2341,7 @@ mod orchestrator_tests {
             socketed_item_ids: HashSet::new(),
             talent_builds: vec![],
             max_catalyst_charges: None,
+            max_socket_adds: None,
         }
     }
 
@@ -2490,6 +2492,7 @@ mod orchestrator_tests {
             socketed_item_ids: HashSet::new(),
             talent_builds: vec![],
             max_catalyst_charges: None,
+            max_socket_adds: None,
         };
 
         let run = CloudStreamingRun {

@@ -34,7 +34,7 @@ fn sorted_bonus_key(item: &Value) -> String {
 /// The resolver's own uid when the value carries one (manual items suffix theirs
 /// with gem/enchant content that reconstruction can't reproduce); otherwise
 /// rebuild it from the item fields.
-fn make_item_uid(item: &Value) -> String {
+pub(super) fn make_item_uid(item: &Value) -> String {
     if let Some(uid) = item.get("uid").and_then(|v| v.as_str()) {
         if !uid.is_empty() {
             return uid.to_string();
@@ -119,20 +119,43 @@ pub(super) fn build_slot_candidates(
             }
         }
 
-        let mut candidates: Vec<Value> = Vec::new();
-        for item in slot_items {
-            let uid = make_item_uid(item);
-            let identity = make_item_identity(item);
-            if selected_uids.contains(&uid) || selected_identities.contains(&identity) {
-                candidates.push(item.clone());
-            }
-        }
-
         let equipped = slot_items.iter().find(|it| {
             it.get("is_equipped")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false)
         });
+        let equipped_uid = equipped.map(make_item_uid);
+
+        let mut candidates: Vec<Value> = Vec::new();
+        for item in slot_items {
+            let uid = make_item_uid(item);
+            // A socket-added copy carries `<source uid>:socket` and nobody ever
+            // selects it: it inherits the source item's selection, including the
+            // equipped item, which is force-inserted below rather than selected.
+            let source_uid = if item
+                .get("socket_added")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
+                uid.strip_suffix(super::sockets::SOCKET_UID_SUFFIX)
+            } else {
+                None
+            };
+            let keep = match source_uid {
+                Some(src) => {
+                    equipped_uid.as_deref() == Some(src)
+                        || selected_uids.contains(src)
+                        || selected_identities.contains(&uid_identity(src))
+                }
+                None => {
+                    selected_uids.contains(&uid)
+                        || selected_identities.contains(&make_item_identity(item))
+                }
+            };
+            if keep {
+                candidates.push(item.clone());
+            }
+        }
 
         if locked_slots.contains(&slot) {
             if let Some(eq) = equipped {
@@ -274,6 +297,36 @@ mod tests {
         // Only equipped — alt was not selected
         assert_eq!(head.len(), 1);
         assert_eq!(head[0]["item_id"], 100);
+    }
+
+    #[test]
+    fn socket_added_copies_follow_their_source_selection() {
+        // regression: socket copies carry a `:socket` uid nobody selected — they must
+        // still reach the iterator for the equipped item and for selected alternatives
+        ensure_game_data_loaded();
+        let profile = "mage=test\n";
+        let items_by_slot = super::super::add_socket_candidates(&HashMap::from([(
+            "head".to_string(),
+            vec![
+                make(100, "head", true, vec![]),
+                make(200, "head", false, vec![]),
+                make(300, "head", false, vec![]),
+            ],
+        )]));
+
+        let mut selected = HashMap::new();
+        selected.insert("head".to_string(), vec![uid_str(200, &[], "bags", "head")]);
+
+        let result = build_slot_candidates(profile, &items_by_slot, &selected, &HashSet::new());
+        let ids: Vec<u64> = result["head"]
+            .iter()
+            .map(|it| it["item_id"].as_u64().unwrap())
+            .collect();
+        // equipped 100, selected alt 200, then both socket copies (appended after
+        // the originals) — the unselected 300 and its copy stay out.
+        assert_eq!(ids, vec![100, 200, 100, 200]);
+        assert_eq!(result["head"][2]["socket_added"], serde_json::json!(true));
+        assert_eq!(result["head"][3]["socket_added"], serde_json::json!(true));
     }
 
     #[test]

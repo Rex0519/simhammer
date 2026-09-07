@@ -106,6 +106,7 @@ pub(super) async fn start_streaming_top_gear_job(mut start: StreamingTopGearStar
         replace_gems: req.replace_gems,
         diamond_always_use: req.diamond_always_use,
         max_colors: req.max_colors,
+        socket_budget: req.socket_budget,
     };
     let locked_slots: std::collections::HashSet<String> =
         req.locked_slots.iter().cloned().collect();
@@ -155,6 +156,7 @@ pub(super) async fn start_streaming_top_gear_job(mut start: StreamingTopGearStar
             "max_combinations": max_combinations,
             "void_forge": req.void_forge,
             "locked_slots": req.locked_slots,
+            "socket_budget": req.socket_budget,
             "options": req.options.to_json(),
             "streaming": true,
             "estimate": estimate,

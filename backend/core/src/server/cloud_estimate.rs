@@ -138,6 +138,9 @@ pub(super) async fn cloud_estimate_top_gear(
     if req.copy_enchants {
         items_by_slot = game_data::apply_copy_enchants(&items_by_slot);
     }
+    if req.socket_budget.unwrap_or(0) > 0 {
+        items_by_slot = profileset_generator::add_socket_candidates(&items_by_slot);
+    }
 
     let talent_builds = normalized_talent_builds(&req.talent_builds);
     let max_combinations = capped_max_combinations(req.max_combinations);
@@ -151,6 +154,7 @@ pub(super) async fn cloud_estimate_top_gear(
         replace_gems: req.replace_gems,
         diamond_always_use: req.diamond_always_use,
         max_colors: req.max_colors,
+        socket_budget: req.socket_budget,
     };
 
     let combos = match profileset_generator::count_top_gear_combos_with_talents(

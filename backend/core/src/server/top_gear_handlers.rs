@@ -40,6 +40,10 @@ fn build_items_by_slot(
         items_by_slot = game_data::apply_copy_enchants(&items_by_slot);
     }
 
+    if req.socket_budget.unwrap_or(0) > 0 {
+        items_by_slot = profileset_generator::add_socket_candidates(&items_by_slot);
+    }
+
     items_by_slot
 }
 
@@ -90,6 +94,7 @@ pub(super) async fn create_top_gear_sim(
         replace_gems: req.replace_gems,
         diamond_always_use: req.diamond_always_use,
         max_colors: req.max_colors,
+        socket_budget: req.socket_budget,
     };
 
     // Exact combo count, counted once: drives the zero-guard, streaming-vs-eager
@@ -234,6 +239,7 @@ pub(super) async fn create_top_gear_sim(
         "max_combinations": max_combinations,
         "void_forge": req.void_forge,
         "locked_slots": req.locked_slots,
+        "socket_budget": req.socket_budget,
         "options": req.options.to_json(),
     });
 
@@ -293,6 +299,7 @@ pub(super) async fn get_top_gear_combo_count(req: web::Json<TopGearRequest>) -> 
         replace_gems: req.replace_gems,
         diamond_always_use: req.diamond_always_use,
         max_colors: req.max_colors,
+        socket_budget: req.socket_budget,
     };
 
     match profileset_generator::count_top_gear_combos_with_talents(

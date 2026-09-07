@@ -10,6 +10,7 @@ pub mod iterator;
 pub mod iterator_from_request;
 mod selection;
 mod simc;
+mod sockets;
 pub mod stage_pipeline;
 pub mod survivor_policy;
 mod top_gear;
@@ -26,6 +27,7 @@ pub use iterator::{
     ProfilesetIteratorConfig,
 };
 pub use iterator_from_request::build_iterator_from_request_json;
+pub(crate) use sockets::add_socket_candidates;
 pub(crate) use top_gear::build_iterator_config;
 
 use once_cell::sync::Lazy;
@@ -117,6 +119,9 @@ pub struct GemEnchantOptions<'a> {
     pub diamond_always_use: bool,
     /// Prefer distinct gem colors across slots.
     pub max_colors: bool,
+    /// How many unsocketed items may be assumed to gain a socket ("add up to N
+    /// sockets"). `None`/`Some(0)` = the option is off.
+    pub socket_budget: Option<u32>,
 }
 
 static EMPTY_ENCHANTS: Lazy<HashMap<String, Vec<u64>>> = Lazy::new(HashMap::new);
@@ -1285,6 +1290,84 @@ finger2=,id=101\n";
 
         // Combos: head_cat only (1), chest_cat only (1), both (filtered). = 2 emits.
         assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn top_gear_socket_budget_emits_a_gemmable_socket_copy() {
+        // regression: the socket-added copy must survive selection and take a gem —
+        // its socket comes from `sockets: 1`, not from socketed_item_ids (the id is
+        // shared with the unsocketed twin, which must stay ungemmed).
+        ensure_game_data_loaded();
+        let base_profile = "mage=test\nspec=frost\nhead=,id=100\n";
+        let equipped = make_item("head", 100, true, ",id=100", vec![], 0, 0);
+        let items_by_slot =
+            super::add_socket_candidates(&HashMap::from([("head".to_string(), vec![equipped])]));
+
+        let gems = [213453_u64];
+        let (input, count, _) = generate_top_gear_input_with_talents(
+            base_profile,
+            &items_by_slot,
+            &HashMap::new(),
+            Some(50),
+            &[],
+            None,
+            &GemEnchantOptions {
+                gem_options: &gems,
+                socket_budget: Some(1),
+                ..Default::default()
+            },
+            &HashSet::new(),
+        )
+        .unwrap();
+
+        assert!(count > 0, "socket budget must produce at least one combo");
+        assert!(
+            input.contains("bonus_id=13668"),
+            "expected the socket-added head; got:\n{input}"
+        );
+        assert!(
+            input.contains("gem_id=213453"),
+            "expected the added socket to be gemmed; got:\n{input}"
+        );
+    }
+
+    #[test]
+    fn top_gear_socket_budget_caps_socket_added_items_per_set() {
+        // regression: budget N must never emit a set wearing N+1 socket-added items
+        ensure_game_data_loaded();
+        let base_profile = "mage=test\nspec=frost\nhead=,id=100\nwrist=,id=200\n";
+        let items_by_slot = super::add_socket_candidates(&HashMap::from([
+            (
+                "head".to_string(),
+                vec![make_item("head", 100, true, ",id=100", vec![], 0, 0)],
+            ),
+            (
+                "wrist".to_string(),
+                vec![make_item("wrist", 200, true, ",id=200", vec![], 0, 0)],
+            ),
+        ]));
+
+        let count_for = |budget: u32| {
+            generate_top_gear_input_with_talents(
+                base_profile,
+                &items_by_slot,
+                &HashMap::new(),
+                Some(50),
+                &[],
+                None,
+                &GemEnchantOptions {
+                    socket_budget: Some(budget),
+                    ..Default::default()
+                },
+                &HashSet::new(),
+            )
+            .unwrap()
+            .1
+        };
+
+        // budget 2: head, wrist, head+wrist. budget 1 drops the head+wrist set.
+        assert_eq!(count_for(2), 3);
+        assert_eq!(count_for(1), 2);
     }
 
     #[test]

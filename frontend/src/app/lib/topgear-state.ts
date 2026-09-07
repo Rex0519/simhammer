@@ -12,6 +12,9 @@ export interface TopGearSavedState {
   copyEnchants: boolean;
   catalyst: boolean;
   catalystCharges: number | null;
+  /** Optional: absent in states saved before the "add sockets" option existed. */
+  addSockets?: boolean;
+  socketBudget?: number;
   replaceGems: boolean;
   diamondAlwaysUse: boolean;
   maxColors: boolean;
