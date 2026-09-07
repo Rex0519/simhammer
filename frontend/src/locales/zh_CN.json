@@ -639,6 +639,7 @@
   "talentCompare.changed": "变更",
   "talentCompare.noDiff": "天赋完全相同",
   "talentCompare.crossSpec": "专精不同，无法比较天赋节点差异",
+  "talentCompare.noTalentString": "该配装没有可用的天赋字符串。",
   "upgradeCompare.selectUpgradeable": "请至少选择一件可升级的物品。",
   "layout.simsRunning": "{count} 个进行中",
   "layout.simsRunningTitle": "{count} 个 sim{s} 正在运行——点击查看",

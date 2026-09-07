@@ -603,6 +603,7 @@
   "talentCompare.changed": "Geändert",
   "talentCompare.noDiff": "Identische Talente",
   "talentCompare.crossSpec": "Andere Spezialisierung – kein Knotenvergleich verfügbar",
+  "talentCompare.noTalentString": "Talentcode für diesen Build nicht verfügbar.",
   "upgradeCompare.selectUpgradeable": "Wähle mindestens einen aufwertbaren Gegenstand.",
   "layout.simsRunning": "{count} laufen",
   "layout.simsRunningTitle": "{count} Sim{s} laufen — zum Anzeigen klicken",

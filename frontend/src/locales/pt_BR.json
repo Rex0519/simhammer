@@ -603,6 +603,7 @@
   "talentCompare.changed": "Alterado",
   "talentCompare.noDiff": "Talentos idênticos",
   "talentCompare.crossSpec": "Especialização diferente — comparação de nós indisponível",
+  "talentCompare.noTalentString": "String de talentos indisponível para esta build.",
   "upgradeCompare.selectUpgradeable": "Selecione pelo menos um item aprimorável.",
   "layout.simsRunning": "{count} em execução",
   "layout.simsRunningTitle": "{count} sim{s} em execução — clique para ver",

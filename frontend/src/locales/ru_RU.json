@@ -603,6 +603,7 @@
   "talentCompare.changed": "Изменено",
   "talentCompare.noDiff": "Таланты идентичны",
   "talentCompare.crossSpec": "Другая специализация — сравнение узлов недоступно",
+  "talentCompare.noTalentString": "Строка талантов для этой сборки недоступна.",
   "upgradeCompare.selectUpgradeable": "Выберите хотя бы один улучшаемый предмет.",
   "layout.simsRunning": "{count} выполняется",
   "layout.simsRunningTitle": "{count} симуляций выполняется — нажмите, чтобы посмотреть",

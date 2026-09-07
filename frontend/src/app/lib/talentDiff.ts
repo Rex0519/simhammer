@@ -23,6 +23,23 @@ export interface TalentDiff {
   changed: TalentDiffEntry[];
 }
 
+/** Hero-tree selector nodes carry `SubTreeEntry`s, which have no icon or
+ *  spell — reshape them into `TalentNode`s so the diff can name a hero-tree
+ *  switch the way it names any other node. */
+function heroSelectorNodes(tree: TalentTreeData): TalentNode[] {
+  return (tree.subTreeNodes ?? []).map((node) => ({
+    ...node,
+    entries: node.entries.map((entry, index) => ({
+      id: entry.id,
+      definitionId: entry.id,
+      maxRanks: 1,
+      type: 'subtree' as const,
+      name: entry.name,
+      index,
+    })),
+  }));
+}
+
 /** nodeId -> maxRanks, using the tree-wide map with a per-node fallback.
  *  Same fallback chain as `TalentPicker.getBuildStatus` — `fullNodeMaxRanks`
  *  covers every node of the class, the local map only the fetched spec. */
@@ -86,7 +103,15 @@ function decode(
 export function diffTalentStrings(a: string, b: string, tree: TalentTreeData): TalentDiff | null {
   if (!a || !b || !tree?.fullNodeOrder) return null;
 
-  const nodes: TalentNode[] = [...tree.classNodes, ...tree.specNodes, ...tree.heroNodes];
+  // Hero-tree selector nodes live in `subTreeNodes` (the same set
+  // `TalentPicker.getBuildStatus` decodes against); without them a hero-tree
+  // switch decodes but has no node to name, so the diff silently drops it.
+  const nodes: TalentNode[] = [
+    ...tree.classNodes,
+    ...tree.specNodes,
+    ...tree.heroNodes,
+    ...heroSelectorNodes(tree),
+  ];
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
   const from = decode(a, tree, nodes);

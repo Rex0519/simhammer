@@ -217,7 +217,9 @@ export default function TalentCompareResults({ baseDps, results }: TalentCompare
         </p>
         {crossSpec ? (
           <p className="text-[13px] text-on-surface-variant">{t('talentCompare.crossSpec')}</p>
-        ) : diff == null ? null : diffIsEmpty ? (
+        ) : diff == null ? (
+          <p className="text-[13px] text-on-surface-variant">{t('talentCompare.noTalentString')}</p>
+        ) : diffIsEmpty ? (
           <p className="text-[13px] text-on-surface-variant">{t('talentCompare.noDiff')}</p>
         ) : (
           <>

@@ -1161,6 +1161,54 @@ main_hand=,id=200\n";
         assert_eq!(build_names, vec!["Build A", "Build B", "Build C"]);
     }
 
+    // A talent build that switches spec has to bring a `spec=` override with
+    // it, or the profileset sims the base actor's spec with foreign talents.
+    //
+    // Talent-string header (talent_normalize::spec_id_from_loadout): 8-bit
+    // serialization version then a 16-bit spec id, both LSB-first over the
+    // 6-bit base64 alphabet — so four chars carry the whole header. "BIEA" is
+    // version 1 + spec 66 (protection paladin) and "BYEA" is version 1 + spec
+    // 70 (retribution); the fifth char only keeps the build strings distinct
+    // and is never read by the header decoder.
+    #[test]
+    fn cross_spec_talent_build_emits_a_spec_override() {
+        ensure_game_data_loaded();
+        let base_profile = "paladin=test\nspec=protection\nhead=,id=100\nmain_hand=,id=200\n";
+
+        let talents = vec![
+            ("Prot A".to_string(), "BIEAA".to_string()),
+            ("Prot B".to_string(), "BIEAB".to_string()),
+            ("Ret".to_string(), "BYEAA".to_string()),
+        ];
+
+        let (input, _count, _metadata) = generate_top_gear_input_with_talents(
+            base_profile,
+            &HashMap::new(),
+            &HashMap::new(),
+            Some(50),
+            &talents,
+            None,
+            &GemEnchantOptions::default(),
+            &HashSet::new(),
+        )
+        .unwrap();
+
+        let spec_lines: Vec<&str> = input.lines().filter(|l| l.contains("+=spec=")).collect();
+        assert_eq!(
+            spec_lines.len(),
+            1,
+            "only the cross-spec build may carry a spec override:\n{input}"
+        );
+        let (prefix, spec) = spec_lines[0]
+            .split_once("+=spec=")
+            .expect("spec override line");
+        assert_eq!(spec, "retribution", "unexpected spec override:\n{input}");
+        assert!(
+            input.contains(&format!("{prefix}+=talents=BYEAA")),
+            "the spec override must sit on the retribution profileset:\n{input}"
+        );
+    }
+
     #[test]
     fn top_gear_unique_equipped_filters_same_id_in_paired_slots() {
         ensure_game_data_loaded();

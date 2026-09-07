@@ -603,6 +603,7 @@
   "talentCompare.changed": "Modificato",
   "talentCompare.noDiff": "Talenti identici",
   "talentCompare.crossSpec": "Specializzazione diversa — confronto dei nodi non disponibile",
+  "talentCompare.noTalentString": "Stringa dei talenti non disponibile per questa build.",
   "upgradeCompare.selectUpgradeable": "Seleziona almeno un oggetto potenziabile.",
   "layout.simsRunning": "{count} in corso",
   "layout.simsRunningTitle": "{count} sim{s} in corso — clicca per vedere",

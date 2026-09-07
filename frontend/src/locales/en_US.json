@@ -639,6 +639,7 @@
   "talentCompare.changed": "Changed",
   "talentCompare.noDiff": "Identical talents",
   "talentCompare.crossSpec": "Different specialization — node diff not available",
+  "talentCompare.noTalentString": "Talent string unavailable for this build.",
   "upgradeCompare.selectUpgradeable": "Select at least one upgradeable item.",
   "layout.simsRunning": "{count} running",
   "layout.simsRunningTitle": "{count} sim{s} running — click to view",
