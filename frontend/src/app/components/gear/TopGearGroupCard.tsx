@@ -1,4 +1,4 @@
-import type { ResolvedItem } from '../../lib/types';
+import { SLOT_LABELS, type ResolvedItem } from '../../lib/types';
 import { getWowheadData, getWowheadUrl, localizedItemName } from '../../lib/useItemInfo';
 import { VOID_FORGE_ENABLED } from '../../lib/featureFlags';
 import GearItemRow from './GearItemRow';
@@ -41,6 +41,8 @@ interface TopGearGroupCardProps {
   onEditGemsEnchant: (item: ResolvedItem) => void;
   addedKeys: Set<string>;
   onRemoveAdded: (item: ResolvedItem) => void;
+  lockedSlots: Set<string>;
+  onToggleLock: (slot: string) => void;
   t: (key: string, values?: Record<string, string | number>) => string;
 }
 
@@ -83,13 +85,35 @@ export default function TopGearGroupCard({
   onEditGemsEnchant,
   addedKeys,
   onRemoveAdded,
+  lockedSlots,
+  onToggleLock,
   t,
 }: TopGearGroupCardProps) {
+  // Only slots that actually wear something can be locked — a lock pins the
+  // equipped item, so an empty slot has nothing to pin.
+  const lockableSlots = group.slots.filter((slot) => equipped.some((item) => item.slot === slot));
+
   return (
     <div className="card space-y-1 p-3.5">
-      <p className="mb-2 font-headline text-[13px] font-semibold uppercase tracking-widest text-muted">
-        {title}
-      </p>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="font-headline text-[13px] font-semibold uppercase tracking-widest text-muted">
+          {title}
+        </p>
+        {lockableSlots.length > 0 && (
+          <div className="flex shrink-0 items-center gap-1">
+            {lockableSlots.map((slot) => (
+              <LockButton
+                key={slot}
+                slot={slot}
+                locked={lockedSlots.has(slot)}
+                showLabel={lockableSlots.length > 1}
+                onToggle={() => onToggleLock(slot)}
+                t={t}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       {equipped.map((item, index) => (
         <GearItemRow
@@ -186,6 +210,50 @@ export default function TopGearGroupCard({
         </GearItemRow>
       ))}
     </div>
+  );
+}
+
+function LockButton({
+  slot,
+  locked,
+  showLabel,
+  onToggle,
+  t,
+}: {
+  slot: string;
+  locked: boolean;
+  showLabel: boolean;
+  onToggle: () => void;
+  t: (key: string, values?: Record<string, string | number>) => string;
+}) {
+  const label = SLOT_LABELS[slot] ?? slot;
+  return (
+    <button
+      type="button"
+      aria-pressed={locked}
+      aria-label={t(locked ? 'topGear.unlockSlot' : 'topGear.lockSlot', { slot: label })}
+      title={t('topGear.lockedHint')}
+      onClick={onToggle}
+      className={`flex h-6 shrink-0 items-center gap-1 rounded px-1.5 transition-colors ${
+        locked
+          ? 'bg-gold/20 text-gold hover:bg-gold/30'
+          : 'text-on-surface-variant/50 hover:bg-gold/10 hover:text-gold'
+      }`}
+    >
+      <svg
+        className="h-3.5 w-3.5"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="3.5" y="7" width="9" height="6.5" rx="1.5" />
+        <path d={locked ? 'M5.5 7V4.75a2.5 2.5 0 0 1 5 0V7' : 'M5.5 7V4.75a2.5 2.5 0 0 1 5 0'} />
+      </svg>
+      {showLabel && <span className="text-[10px] font-bold uppercase">{label}</span>}
+    </button>
   );
 }
 

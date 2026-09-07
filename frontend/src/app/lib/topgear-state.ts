@@ -16,6 +16,9 @@ export interface TopGearSavedState {
   diamondAlwaysUse: boolean;
   maxColors: boolean;
   addedLootItems?: ResolvedItem[];
+  // Real slot names pinned to their equipped item; absent in states saved
+  // before the lock feature existed.
+  lockedSlots?: string[];
 }
 
 export function storeTopGearState(state: TopGearSavedState): void {
