@@ -152,8 +152,8 @@ pub(super) fn generate_droptimizer_input(
         let source_item_id = item.get("source_item_id").and_then(|v| v.as_u64());
         // Encounter id / instance name only exist on drops that came from the
         // drops API; the source summary groups by them.
-        let encounter_id = item.get("encounter_id").cloned();
-        let instance_name = item.get("instance_name").cloned();
+        let encounter_id = item.get("encounter_id").cloned().filter(|v| !v.is_null());
+        let instance_name = item.get("instance_name").cloned().filter(|v| !v.is_null());
         // `slot_inherits` is intentionally ignored (kept in the type for API
         // back-compat, no longer authoritative).
         let mut slots = class_data::inv_type_to_slots(inv_type, &spec);
@@ -292,31 +292,36 @@ pub(super) fn generate_droptimizer_input(
             }
             lines.push(String::new());
 
-            combo_metadata.insert(
-                combo_name.clone(),
-                json!([{
-                    "slot": slot,
-                    "item_id": item_id,
-                    "ilevel": ilevel,
-                    "name": name,
-                    "bonus_ids": bonus_ids,
-                    "crafted_stats": crafted_stats.map(|cs| cs.stat_ids.to_vec()).unwrap_or_default(),
-                    "embellishment": combo_embellishment.map(|e| json!({
-                        "id": e.id,
-                        "name": e.name,
-                        "bonus_ids": e.bonus_ids,
-                    })),
-                    "enchant_id": applied_enchant,
-                    "gem_id": applied_gem,
-                    "is_kept": false,
-                    "encounter": encounter,
-                    "encounter_id": encounter_id,
-                    "instance_name": instance_name,
-                    "is_void_forge": is_void_forge,
-                    "is_catalyst": is_catalyst,
-                    "source_item_id": source_item_id,
-                }]),
-            );
+            let mut meta = json!({
+                "slot": slot,
+                "item_id": item_id,
+                "ilevel": ilevel,
+                "name": name,
+                "bonus_ids": bonus_ids,
+                "crafted_stats": crafted_stats.map(|cs| cs.stat_ids.to_vec()).unwrap_or_default(),
+                "embellishment": combo_embellishment.map(|e| json!({
+                    "id": e.id,
+                    "name": e.name,
+                    "bonus_ids": e.bonus_ids,
+                })),
+                "enchant_id": applied_enchant,
+                "gem_id": applied_gem,
+                "is_kept": false,
+                "encounter": encounter,
+                "is_void_forge": is_void_forge,
+                "is_catalyst": is_catalyst,
+                "source_item_id": source_item_id,
+            });
+            // Only drops from the drops API carry these; stamping `null` on every
+            // other row just bloats the payload (`base_profile::item_meta` guards
+            // its optional fields the same way).
+            if let Some(id) = encounter_id.clone() {
+                meta["encounter_id"] = id;
+            }
+            if let Some(instance) = instance_name.clone() {
+                meta["instance_name"] = instance;
+            }
+            combo_metadata.insert(combo_name.clone(), json!([meta]));
             combo_idx += 1;
         }
     }
@@ -1192,5 +1197,28 @@ finger2=,id=102,gem_id=2222\n"; // 2222 is most-used (x2)
         let combo = metadata.get("Combo 2").expect("missing combo");
         assert_eq!(combo[0]["encounter_id"], 2611);
         assert_eq!(combo[0]["instance_name"], "Sporefall");
+    }
+
+    // Guards the metadata payload: a drop that carries neither field must not
+    // ship two JSON nulls on every row (`item_meta` guards its optionals the
+    // same way).
+    #[test]
+    fn drop_metadata_omits_absent_encounter_id_and_instance_name() {
+        let profile = "mage=test\nspec=frost\nhead=,id=100\n";
+        let drops = vec![json!({
+            "item_id": 999,
+            "ilevel": 600,
+            "name": "Drop",
+            "encounter": "Specific Boss Name",
+            "inventory_type": 1,
+            "bonus_ids": []
+        })];
+        let (_, _, metadata) = generate_droptimizer_input(profile, &drops, None, &HashMap::new());
+        let combo = metadata.get("Combo 2").expect("missing combo");
+        let row = combo[0].as_object().expect("combo row is an object");
+        assert!(
+            !row.contains_key("encounter_id") && !row.contains_key("instance_name"),
+            "absent source fields must be omitted, not stamped null: {row:?}"
+        );
     }
 }

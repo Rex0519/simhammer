@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 import { useLanguage } from '../../lib/i18n';
 import type { DropInstanceEntry, DropSourceEntry, DropSourceSummary } from './topGearResultsTypes';
 
@@ -77,10 +77,23 @@ export default function DropSourceSummaryTable({
           // sense from the boss view — the instance rows stay non-interactive.
           const onRowClick = isSource ? onSelectSource : undefined;
           return (
-            <button
-              type="button"
+            // A row wraps block-level content, so it cannot be a <button>.
+            // Interactive rows get the button role and keyboard handling; the
+            // inert instance rows stay out of the tab order entirely.
+            <div
               key={isSource ? row.key : row.instance_name}
-              onClick={onRowClick}
+              {...(onRowClick
+                ? {
+                    role: 'button' as const,
+                    tabIndex: 0,
+                    onClick: onRowClick,
+                    onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return;
+                      event.preventDefault();
+                      onRowClick();
+                    },
+                  }
+                : {})}
               className={`relative block w-full overflow-hidden rounded-lg text-left transition-colors ${
                 onRowClick ? 'cursor-pointer hover:bg-white/[0.04]' : 'cursor-default'
               }`}
@@ -138,7 +151,7 @@ export default function DropSourceSummaryTable({
                   {Math.round(row.upgrade_chance * 100)}%
                 </span>
               </div>
-            </button>
+            </div>
           );
         })}
       </div>
