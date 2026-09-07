@@ -276,6 +276,7 @@ pub fn count_top_gear_combos_with_talents(
             gem_opts.gem_options,
             gem_opts.sockets(),
             talent_builds.len().max(1),
+            locked_slots,
         );
         if est > limit as u64 {
             return Err(format!(
@@ -324,6 +325,7 @@ pub fn generate_top_gear_input_with_talents(
             gem_opts.gem_options,
             gem_opts.sockets(),
             talent_builds.len().max(1),
+            locked_slots,
         );
         if est > limit as u64 {
             return Err(format!(

@@ -27,8 +27,9 @@ pub(super) struct GearSetContext<'a> {
 }
 
 /// Single funnel every generator must call before emitting a gear set. Aggregates
-/// unique-equipped, item-limit, vault, weapon-pairing, catalyst, and socket-budget checks so a
-/// new constraint is a one-edit change. See `feedback_gear_validation_unified`.
+/// unique-equipped, item-limit, vault, weapon-pairing, catalyst, socket-budget and
+/// upgrade-budget (`validate_upgrade_budget`) checks so a new constraint is a
+/// one-edit change. See `feedback_gear_validation_unified`.
 pub(super) fn is_legal_gear_set<V: Borrow<Value>>(
     gear_set: &HashMap<String, V>,
     ctx: &GearSetContext<'_>,

@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 /// Conservative O(axes) upper-bound on the profileset count (no enumeration).
 /// Filters (unique-equipped, vault, weapon, catalyst, item-limit, baseline) only
 /// reduce the real count, so it's safe as a "needs Triage?" gate.
+#[allow(clippy::too_many_arguments)]
 pub fn estimate_top_gear_combo_count(
     items_by_slot: &HashMap<String, Vec<Value>>,
     selected_items: &HashMap<String, Vec<String>>,
@@ -11,8 +12,9 @@ pub fn estimate_top_gear_combo_count(
     gem_options: &[u64],
     socketed_item_ids: &HashSet<u64>,
     talent_builds_count: usize,
+    locked_slots: &HashSet<String>,
 ) -> u64 {
-    let gear_axis = gear_axis_size(items_by_slot, selected_items);
+    let gear_axis = gear_axis_size(items_by_slot, selected_items, locked_slots);
     let enchant_axis = enchant_axis_size(enchant_selections);
     let gem_axis = gem_axis_size_upper_bound(gem_options, socketed_item_ids, items_by_slot);
     let talents = talent_builds_count.max(1) as u64;
@@ -27,6 +29,7 @@ pub fn estimate_top_gear_combo_count(
 fn gear_axis_size(
     items_by_slot: &HashMap<String, Vec<Value>>,
     selected_items: &HashMap<String, Vec<String>>,
+    locked_slots: &HashSet<String>,
 ) -> u64 {
     // For each slot in selected_items: number of selected alternatives + 1 (equipped).
     // For each slot NOT in selected_items: 1 (equipped only).
@@ -36,6 +39,11 @@ fn gear_axis_size(
     // selected.
     let mut prod: u64 = 1;
     for (slot, items) in items_by_slot {
+        // A locked slot keeps only its equipped item (`build_slot_candidates`),
+        // so neither selections nor upgrade/socket copies widen it.
+        if locked_slots.contains(slot) {
+            continue;
+        }
         let selected = selected_items.get(slot).map(|v| v.len()).unwrap_or(0);
         let base = selected as u64 + 1;
         let variants = items
@@ -143,6 +151,7 @@ mod tests {
             &[],
             &HashSet::new(),
             1,
+            &HashSet::new(),
         );
         assert_eq!(count, 1);
     }
@@ -164,6 +173,7 @@ mod tests {
             &[],
             &HashSet::new(),
             1,
+            &HashSet::new(),
         );
         assert_eq!(count, 3);
     }
@@ -181,6 +191,7 @@ mod tests {
             &[],
             &HashSet::new(),
             3,
+            &HashSet::new(),
         );
         assert_eq!(count, 2 * 3);
     }
@@ -209,6 +220,7 @@ mod tests {
             &[],
             &HashSet::new(),
             1,
+            &HashSet::new(),
         );
         assert_eq!(
             count, 2,
@@ -271,6 +283,7 @@ mod tests {
             Some(&budget),
         )
         .expect("count must not trip the pre-gate at this limit");
+        assert!(exact > 1, "fixture must actually enumerate, got {exact}");
 
         let est = estimate_top_gear_combo_count(
             &items,
@@ -279,6 +292,7 @@ mod tests {
             &[],
             &HashSet::new(),
             1,
+            &HashSet::new(),
         );
         assert!(
             est >= exact as u64,
@@ -323,6 +337,123 @@ mod tests {
         );
     }
 
+    /// Guards #144/I2: a locked slot is pinned to its equipped item by
+    /// `build_slot_candidates`, so the pre-gate must not count its variants or
+    /// socket copies — otherwise locking a slot *raises* the estimate and the
+    /// request is rejected for combinations that can never be emitted.
+    #[test]
+    fn locked_slot_contributes_a_single_axis() {
+        let mut items = HashMap::new();
+        items.insert(
+            "head".to_string(),
+            vec![make_item(1), make_variant(1, 302), make_item(2)],
+        );
+        items.insert("chest".to_string(), vec![make_item(10), make_item(11)]);
+        let mut selected = HashMap::new();
+        selected.insert("head".to_string(), vec!["2".to_string()]);
+        selected.insert("chest".to_string(), vec!["11".to_string()]);
+
+        let locked: HashSet<String> = ["head".to_string()].into_iter().collect();
+        let with_lock = estimate_top_gear_combo_count(
+            &items,
+            &selected,
+            &HashMap::new(),
+            &[],
+            &HashSet::new(),
+            1,
+            &locked,
+        );
+
+        // Locking `head` must land on the same number as never offering it.
+        let mut unselected = selected.clone();
+        unselected.remove("head");
+        let mut items_without_head = items.clone();
+        items_without_head.insert("head".to_string(), vec![make_item(1)]);
+        let no_selection = estimate_top_gear_combo_count(
+            &items_without_head,
+            &unselected,
+            &HashMap::new(),
+            &[],
+            &HashSet::new(),
+            1,
+            &HashSet::new(),
+        );
+        assert_eq!(with_lock, no_selection);
+    }
+
+    /// Guards #144/I2: the estimate must still bound the iterator for a slot
+    /// that carries *both* an upgrade variant and a socket-added copy — the two
+    /// widening terms multiply, so a wrong combination underestimates.
+    #[test]
+    fn estimate_bounds_iterator_for_upgrade_plus_socket_slot() {
+        use crate::test_support::{ensure_game_data_loaded, TestItem};
+        ensure_game_data_loaded();
+
+        let uid = |item: &Value| {
+            format!(
+                "{}::{}:{}",
+                item["item_id"].as_u64().unwrap(),
+                item["origin"].as_str().unwrap(),
+                item["slot"].as_str().unwrap()
+            )
+        };
+        let equipped = TestItem::new(101).slot("head").equipped().build();
+        let alt = TestItem::new(102).slot("head").build();
+
+        let derived = |base: &Value, suffix: &str| {
+            let mut v = base.clone();
+            v["uid"] = json!(format!("{}{}", uid(base), suffix));
+            v["is_equipped"] = json!(false);
+            v
+        };
+        let mut eq_up = derived(&equipped, ":up302");
+        eq_up["upgraded"] = json!(true);
+        eq_up["upgrade_cost"] = json!({ "3444": 20 });
+        let mut alt_up = derived(&alt, ":up302");
+        alt_up["upgraded"] = json!(true);
+        alt_up["upgrade_cost"] = json!({ "3444": 20 });
+        let mut alt_socket = derived(&alt, super::super::sockets::SOCKET_UID_SUFFIX);
+        alt_socket["socket_added"] = json!(true);
+        alt_socket["sockets"] = json!(1u64);
+
+        let mut items: HashMap<String, Vec<Value>> = HashMap::new();
+        items.insert(
+            "head".to_string(),
+            vec![equipped, eq_up, alt.clone(), alt_up, alt_socket],
+        );
+        let selected: HashMap<String, Vec<String>> = [("head".to_string(), vec![uid(&alt)])]
+            .into_iter()
+            .collect();
+
+        let budget: HashMap<u64, u64> = [(3444u64, 10_000u64)].into_iter().collect();
+        let exact = crate::profileset_generator::count_top_gear_combos_with_talents(
+            "",
+            &items,
+            &selected,
+            Some(1_000_000),
+            &[],
+            None,
+            &crate::profileset_generator::GemEnchantOptions::default(),
+            &HashSet::new(),
+            Some(&budget),
+        )
+        .expect("count must not trip the pre-gate at this limit");
+
+        let est = estimate_top_gear_combo_count(
+            &items,
+            &selected,
+            &HashMap::new(),
+            &[],
+            &HashSet::new(),
+            1,
+            &HashSet::new(),
+        );
+        assert!(
+            est >= exact as u64,
+            "estimate must bound the iterator (est={est}, exact={exact})"
+        );
+    }
+
     #[test]
     fn does_not_overflow_on_huge_input() {
         // 30 slots, each with 10 alternatives, plus 10 gems on 10 socketed slots.
@@ -340,6 +471,7 @@ mod tests {
             &[],
             &HashSet::new(),
             1,
+            &HashSet::new(),
         );
         // 10^30 is way beyond u64::MAX; estimator must saturate, not panic.
         assert_eq!(count, u64::MAX);

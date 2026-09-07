@@ -193,10 +193,17 @@ export default function TopGearScreen() {
     } catch {}
   }, []);
 
+  // A budgeted Top Gear run keeps the profile at its current item levels (the
+  // backend skips `upgrade_simc_input` when a budget is present), so resolving
+  // gear at track max would hand the UI uids from a different namespace than the
+  // budgeted candidates carry — every selection would silently miss.
+  const hasBudget = Object.keys(upgradeBudget).length > 0;
+  const resolveMaxUpgrade = maxUpgrade && !hasBudget;
+
   useEffect(() => {
     const trimmed = simcInput.trim();
     const inputChanged = trimmed !== prevInputRef.current;
-    const upgradeChanged = maxUpgrade !== prevUpgradeRef.current;
+    const upgradeChanged = resolveMaxUpgrade !== prevUpgradeRef.current;
     const catalystChanged = catalyst !== prevCatalystRef.current;
     const voidForgeChanged = voidForge !== prevVoidForgeRef.current;
 
@@ -206,7 +213,7 @@ export default function TopGearScreen() {
       setResolved(null);
       setSelectedUids({});
       prevInputRef.current = trimmed;
-      prevUpgradeRef.current = maxUpgrade;
+      prevUpgradeRef.current = resolveMaxUpgrade;
       prevCatalystRef.current = catalyst;
       prevVoidForgeRef.current = voidForge;
       return;
@@ -215,7 +222,7 @@ export default function TopGearScreen() {
     const timer = setTimeout(
       async () => {
         prevInputRef.current = trimmed;
-        prevUpgradeRef.current = maxUpgrade;
+        prevUpgradeRef.current = resolveMaxUpgrade;
         prevCatalystRef.current = catalyst;
         prevVoidForgeRef.current = voidForge;
         setResolving(true);
@@ -224,7 +231,7 @@ export default function TopGearScreen() {
           const resolveInput = appendLocalItems(simcInput, localItemsRef.current);
           const data = await postJson<ResolveGearResponse>('/api/gear/resolve', {
             simc_input: resolveInput,
-            max_upgrade: maxUpgrade,
+            max_upgrade: resolveMaxUpgrade,
             catalyst,
             void_forge: voidForge,
           });
@@ -234,8 +241,15 @@ export default function TopGearScreen() {
             setCatalystCharges(data.catalyst_charges);
           }
 
+          if (upgradeChanged && !inputChanged && !restoringRef.current) {
+            // The uid namespace moved with the flag; a selection built against
+            // the old one no longer matches any candidate.
+            setSelectedUids({});
+          }
+
           if (inputChanged && !restoringRef.current) {
             setSelectedUids({});
+            setUpgradeBudget({});
             setLocalItems([]);
             setAddedLootItems([]);
             setEnchantSelections({});
@@ -257,7 +271,7 @@ export default function TopGearScreen() {
     );
 
     return () => clearTimeout(timer);
-  }, [simcInput, maxUpgrade, catalyst, voidForge]);
+  }, [simcInput, resolveMaxUpgrade, catalyst, voidForge]);
 
   const equippedSlots = useMemo<Record<string, ResolvedItem>>(() => {
     if (!resolved) return {};

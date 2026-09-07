@@ -1780,6 +1780,7 @@ main_hand=,id=200\n";
             &gems,
             &socketed,
             1,
+            &HashSet::new(),
         );
 
         assert!(exact > 0, "exact count should be positive, got {exact}");

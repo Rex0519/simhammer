@@ -28,6 +28,11 @@ export default function UpgradeBudgetPanel({
 }) {
   const { t } = useLanguage();
   const [currencies, setCurrencies] = useState<Record<string, CurrencyMeta> | null>(null);
+  // The trimmed export that produced `currencies`. Without it the prefill effect
+  // fires on a new export while `currencies` still holds the previous one's map,
+  // stamps the new key as prefilled, and the freshly fetched amounts are then
+  // skipped by the guard — new currencies render as 0.
+  const [currenciesFor, setCurrenciesFor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   // Raw text per currency while the field is being edited, so clearing it does
   // not snap to "0" and block retyping. Dropped on blur, when the coerced
@@ -41,13 +46,16 @@ export default function UpgradeBudgetPanel({
     const trimmed = simcInput.trim();
     if (trimmed.length < 10) {
       setCurrencies(null);
+      setCurrenciesFor(null);
       return;
     }
 
     let cancelled = false;
     setLoading(true);
 
-    (async () => {
+    // Debounced like the gear-resolve effect: the export arrives keystroke by
+    // keystroke when pasted into a textarea.
+    const timer = setTimeout(async () => {
       try {
         const res = await fetch(`${API_URL}/api/upgrade-compare/prepare`, {
           method: 'POST',
@@ -57,28 +65,36 @@ export default function UpgradeBudgetPanel({
         if (cancelled) return;
         if (!res.ok) {
           setCurrencies({});
+          setCurrenciesFor(trimmed);
           return;
         }
         const result: { currencies?: Record<string, CurrencyMeta> } = await res.json();
         if (cancelled) return;
         setCurrencies(result.currencies ?? {});
+        setCurrenciesFor(trimmed);
         // The results page labels its spend badges from this cache (#144).
         storeUpgradeCurrencies(result.currencies ?? {});
       } catch {
-        if (!cancelled) setCurrencies({});
+        if (!cancelled) {
+          setCurrencies({});
+          setCurrenciesFor(trimmed);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
-    })();
+    }, 300);
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [simcInput]);
 
   useEffect(() => {
     if (currencies === null) return;
     const key = simcInput.trim();
+    // Only prefill from the map this very export produced.
+    if (currenciesFor !== key) return;
     if (prefilledForRef.current === key) return;
     prefilledForRef.current = key;
 
@@ -90,7 +106,7 @@ export default function UpgradeBudgetPanel({
     // Runs once per export: `budget` and `onBudgetChange` change on every edit,
     // and re-running on those would overwrite what the user just typed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currencies, simcInput]);
+  }, [currencies, currenciesFor, simcInput]);
 
   if (currencies === null) {
     return null;

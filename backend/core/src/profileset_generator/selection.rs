@@ -175,18 +175,6 @@ pub(super) fn build_slot_candidates(
         }
 
         if let Some(eq) = equipped {
-            // The equipped item is never "selected", so neither is its upgrade
-            // variant — force it in alongside the equipped item itself.
-            let eq_uid = make_item_uid(eq);
-            for item in slot_items {
-                let uid = make_item_uid(item);
-                if upgrade_variant_base_uid(&uid) == Some(eq_uid.as_str())
-                    && !candidates.iter().any(|c| make_item_uid(c) == uid)
-                {
-                    candidates.push(item.clone());
-                }
-            }
-
             let already_included = candidates.iter().any(|c| {
                 c.get("item_id") == eq.get("item_id")
                     && c.get("is_equipped")
@@ -308,6 +296,132 @@ mod tests {
         assert!(
             !uids.iter().any(|u| u.starts_with("300:")),
             "an unselected item and its upgrade must stay out: {uids:?}"
+        );
+    }
+
+    fn champion_ring(item_id: u64, slot: &str, equipped: bool) -> Value {
+        // Champion 3/6 (bonus 12835): one 20-crest step to 4/6 at ilvl 302.
+        json!({
+            "uid": format!("{item_id}:12835:{}:{slot}", if equipped { "equipped" } else { "bags" }),
+            "item_id": item_id,
+            "slot": slot,
+            "is_equipped": equipped,
+            "origin": if equipped { "equipped" } else { "bags" },
+            "bonus_ids": [12835],
+            "simc_string": format!("{slot}=,id={item_id},bonus_id=12835"),
+            "ilevel": 298,
+            "enchant_id": 0,
+            "gem_id": 0,
+            "sockets": 0,
+        })
+    }
+
+    fn budgeted_ring_slot() -> HashMap<String, Vec<Value>> {
+        let items: HashMap<String, Vec<Value>> = [(
+            "finger1".to_string(),
+            vec![
+                champion_ring(251093, "finger1", true),
+                champion_ring(280715, "finger1", false),
+            ],
+        )]
+        .into_iter()
+        .collect();
+        let budget: HashMap<u64, u64> = [(3444u64, 120u64)].into_iter().collect();
+        crate::game_data::upgrade_items_by_slot_within_budget(&items, &budget)
+    }
+
+    /// Guards #144/C1: with a crest budget the Top Gear path deliberately skips
+    /// `upgrade_simc_input`, so candidates carry *current-level* bonus ids plus
+    /// `:up<ilvl>` variants. A selection uid the UI built from those same
+    /// current-level bonus ids must resolve; a uid built from track-max bonus
+    /// ids (what `/api/gear/resolve` returns with `max_upgrade`) resolves to
+    /// nothing — that namespace split is the bug the frontend fix avoids.
+    #[test]
+    fn budgeted_candidates_match_current_level_selection_uids() {
+        ensure_game_data_loaded();
+        let items_by_slot = budgeted_ring_slot();
+
+        let selected: HashMap<String, Vec<String>> = [(
+            "finger1".to_string(),
+            vec!["280715:12835:bags:finger1".to_string()],
+        )]
+        .into_iter()
+        .collect();
+        let uids: Vec<String> =
+            build_slot_candidates("", &items_by_slot, &selected, &HashSet::new())["finger1"]
+                .iter()
+                .map(make_item_uid)
+                .collect();
+        assert!(
+            uids.contains(&"280715:12835:bags:finger1".to_string())
+                && uids.contains(&"280715:12835:bags:finger1:up308".to_string()),
+            "a current-level selection uid must keep the alternative and its \
+             affordable upgrade: {uids:?}"
+        );
+
+        let max_level: HashMap<String, Vec<String>> = [(
+            "finger1".to_string(),
+            vec!["280715:12838:bags:finger1".to_string()],
+        )]
+        .into_iter()
+        .collect();
+        let stale: Vec<String> =
+            build_slot_candidates("", &items_by_slot, &max_level, &HashSet::new())["finger1"]
+                .iter()
+                .map(make_item_uid)
+                .collect();
+        assert!(
+            !stale.iter().any(|u| u.starts_with("280715:")),
+            "a track-max uid belongs to the unbudgeted namespace and must match \
+             nothing here: {stale:?}"
+        );
+    }
+
+    /// Guards #144/C1: selecting an upgradable alternative under a budget must
+    /// widen the combination space. Before the frontend fix the UI sent
+    /// track-max uids, so the count was identical to selecting nothing.
+    #[test]
+    fn budgeted_combo_count_grows_when_an_alternative_is_selected() {
+        ensure_game_data_loaded();
+        let items_by_slot = budgeted_ring_slot();
+        let budget: HashMap<u64, u64> = [(3444u64, 120u64)].into_iter().collect();
+
+        let count = |selected: &HashMap<String, Vec<String>>| {
+            crate::profileset_generator::count_top_gear_combos_with_talents(
+                "",
+                &items_by_slot,
+                selected,
+                Some(1_000_000),
+                &[],
+                None,
+                &crate::profileset_generator::GemEnchantOptions::default(),
+                &HashSet::new(),
+                Some(&budget),
+            )
+            .expect("well under the pre-gate limit")
+        };
+
+        let nothing_selected = count(&HashMap::new());
+        let selected: HashMap<String, Vec<String>> = [(
+            "finger1".to_string(),
+            vec!["280715:12835:bags:finger1".to_string()],
+        )]
+        .into_iter()
+        .collect();
+        let with_selection = count(&selected);
+        let stale: HashMap<String, Vec<String>> = [(
+            "finger1".to_string(),
+            vec!["280715:12838:bags:finger1".to_string()],
+        )]
+        .into_iter()
+        .collect();
+
+        assert_eq!(nothing_selected, 1, "equipped ring plus its one upgrade");
+        assert_eq!(with_selection, 3, "the alternative and its upgrade join in");
+        assert_eq!(
+            count(&stale),
+            nothing_selected,
+            "a track-max uid is silently dropped — the regression"
         );
     }
 

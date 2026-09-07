@@ -144,6 +144,7 @@ pub(super) async fn create_top_gear_sim(
         &req.gem_options,
         &socketed_ids,
         talent_builds.len().max(1),
+        &locked_slots,
     );
 
     // WorkloadEstimate combo_count: prefer the exact count, fall back to `estimate`
