@@ -17,6 +17,38 @@ export interface TopGearResult {
   precision_pct?: number;
 }
 
+/** Metrics shared by the boss rows and the instance rollup of `source_summary`. */
+export interface DropSourceMetrics {
+  /** Deduped droppable items simmed for this source. */
+  items: number;
+  upgrades: number;
+  /** Average DPS gain over the source's items; non-upgrades count as 0. */
+  expected: number;
+  best: number;
+  /** upgrades / items, 0..1. */
+  upgrade_chance: number;
+  /** 1-based Raidbots priority (tier by expected, then upgrade chance, then best). */
+  priority: number;
+}
+
+export interface DropSourceEntry extends DropSourceMetrics {
+  /** encounter_id when known, else the boss name. */
+  key: string;
+  encounter: string;
+  instance_name: string;
+  best_item: { name: string; item_id: number; ilevel: number; delta: number };
+}
+
+export interface DropInstanceEntry extends DropSourceMetrics {
+  instance_name: string;
+}
+
+/** Per-source aggregation the backend attaches to Drop Finder results on read. */
+export interface DropSourceSummary {
+  sources: DropSourceEntry[];
+  instances: DropInstanceEntry[];
+}
+
 export interface TopGearResultsProps {
   playerName: string;
   playerClass: string;
@@ -31,6 +63,8 @@ export interface TopGearResultsProps {
   targetError?: number;
   elapsedTime?: number;
   backLink?: ReactNode;
+  /** Per-source summary (Drop Finder only); renders the "where to go next" table. */
+  sourceSummary?: DropSourceSummary;
   /** Source job id — enables the per-row "Sim" verify button. Omit on historical/imported views where re-running isn't applicable. */
   sourceJobId?: string;
 }

@@ -1,5 +1,5 @@
 import type { GearItem } from '../components/gear/gearOverviewTypes';
-import type { TopGearResult } from '../components/gear/topGearResultsTypes';
+import type { DropSourceSummary, TopGearResult } from '../components/gear/topGearResultsTypes';
 import { GEAR_COMPARISON_SIM_TYPES } from './simTypes';
 
 /** One ability row in the Quick Sim DPS breakdown (parse_simc_result). */
@@ -66,6 +66,8 @@ export interface GearComparisonResult extends CommonResultFields {
   base_dps: number;
   max_time?: number;
   results: TopGearResult[];
+  /** Drop Finder only: per-boss/per-instance aggregation computed on read. */
+  source_summary?: DropSourceSummary;
 }
 
 export type SimResult = QuickSimResult | GearComparisonResult;

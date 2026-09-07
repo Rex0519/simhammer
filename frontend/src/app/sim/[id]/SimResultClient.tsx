@@ -404,6 +404,7 @@ export default function SimResultClient() {
             iterations={r.iterations}
             targetError={r.target_error}
             elapsedTime={r.total_elapsed_seconds ?? r.elapsed_time_seconds}
+            sourceSummary={r.source_summary}
             sourceJobId={typeof id === 'string' ? id : undefined}
             backLink={
               hasTopGearState ? (
