@@ -3,11 +3,11 @@
 
 import { useMemo, useState } from 'react';
 import { useLanguage } from '../../lib/i18n';
-import { specDisplayName } from '../../lib/types';
+import { localizedSpecName, useLocalizedNames } from '../../lib/localizedNames';
 import { decodeHeader } from '../../lib/talentDecode';
 import { diffTalentStrings, type TalentDiffEntry } from '../../lib/talentDiff';
 import { useTalentTree } from '../../lib/useTalentTree';
-import { iconProps, wowheadHost } from '../../lib/useItemInfo';
+import { iconProps, localizedSpellName, useItemNames, wowheadHost } from '../../lib/useItemInfo';
 import type { TopGearResult } from '../gear/topGearResultsTypes';
 
 interface TalentCompareResultsProps {
@@ -65,6 +65,7 @@ function CopyTalentButton({ talentString }: { talentString: string }) {
 
 function DiffColumn({ title, entries }: { title: string; entries: TalentDiffEntry[] }) {
   const { locale } = useLanguage();
+  useItemNames();
   // `wowheadHost` maps the locale to a real Wowhead domain; splitting the locale
   // ourselves produced dead hosts for the ones that don't match (zh_CN -> zh).
   const host = wowheadHost(locale);
@@ -77,36 +78,40 @@ function DiffColumn({ title, entries }: { title: string; entries: TalentDiffEntr
         {title} ({entries.length})
       </p>
       <ul className="space-y-1">
-        {entries.map((e) => (
-          <li key={e.nodeId} className="flex items-center gap-2">
-            <img {...iconProps(e.icon)} alt="" className="h-5 w-5 shrink-0 rounded" />
-            {e.spellId ? (
-              <a
-                href={`https://${host}/spell=${e.spellId}`}
-                data-wowhead={`spell=${e.spellId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="truncate text-[13px] text-on-surface-variant hover:text-gold"
-              >
-                {e.name}
-              </a>
-            ) : (
-              <span className="truncate text-[13px] text-on-surface-variant">{e.name}</span>
-            )}
-            {e.from && e.to && (
-              <span className="shrink-0 text-[11px] tabular-nums text-on-surface-variant/50">
-                {e.from} → {e.to}
-              </span>
-            )}
-          </li>
-        ))}
+        {entries.map((e) => {
+          const name = localizedSpellName(e.spellId ?? 0, e.name, locale);
+          return (
+            <li key={e.nodeId} className="flex items-center gap-2">
+              <img {...iconProps(e.icon)} alt="" className="h-5 w-5 shrink-0 rounded" />
+              {e.spellId ? (
+                <a
+                  href={`https://${host}/spell=${e.spellId}`}
+                  data-wowhead={`spell=${e.spellId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="truncate text-[13px] text-on-surface-variant hover:text-gold"
+                >
+                  {name}
+                </a>
+              ) : (
+                <span className="truncate text-[13px] text-on-surface-variant">{name}</span>
+              )}
+              {e.from && e.to && (
+                <span className="shrink-0 text-[11px] tabular-nums text-on-surface-variant/50">
+                  {e.from} → {e.to}
+                </span>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
 }
 
 export default function TalentCompareResults({ baseDps, results }: TalentCompareResultsProps) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
 
   // Baseline first (the row the backend named "Currently Equipped (<build>)"),
   // then the remaining rows in the DPS order the parser already sorted them into.
@@ -189,7 +194,7 @@ export default function TalentCompareResults({ baseDps, results }: TalentCompare
                       </span>
                       {row.talent_spec && (
                         <span className="shrink-0 rounded bg-primary-container/20 px-1.5 py-px text-[10px] font-bold uppercase tracking-widest text-primary">
-                          {specDisplayName(row.talent_spec)}
+                          {localizedSpecName(row.talent_spec, locale)}
                         </span>
                       )}
                     </div>

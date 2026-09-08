@@ -1,7 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useLanguage } from '../../lib/i18n';
 import { localizedItemName, useItemNames, getWowheadUrl, iconProps } from '../../lib/useItemInfo';
-import type { CraftedEmbellishment } from '../../lib/types';
+import {
+  localizedEncounterName,
+  localizedInstanceName,
+  useLocalizedNames,
+} from '../../lib/localizedNames';
+import { slotLabel, type CraftedEmbellishment } from '../../lib/types';
 import type { DropItem, UpgradeTracks } from './types';
 import { dropUid, dropWowheadAttr, getTrackInfo, resolveUpgrade, QUALITY_COLORS } from './types';
 import { resolveInherits, type EquippedGear } from '../../lib/inheritedGear';
@@ -71,6 +76,7 @@ export default function ItemTable({
 }: ItemTableProps) {
   const { t, locale } = useLanguage();
   useItemNames();
+  useLocalizedNames();
   const [filterText, setFilterText] = useState('');
   const [groupBy, setGroupBy] = useState<'slot' | 'dungeon'>('slot');
   // Crafted category active iff the caller passed season embellishment data.
@@ -281,7 +287,10 @@ export default function ItemTable({
           <div key={slot}>
             <div className="bg-surface-container-low/50 px-4 py-1.5">
               <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/40">
-                {slot} ({items.length})
+                {groupBy === 'dungeon'
+                  ? localizedInstanceName(items[0]?.instance_id, slot, locale)
+                  : slotLabel(slot, t)}{' '}
+                ({items.length})
               </span>
             </div>
 
@@ -382,8 +391,9 @@ export default function ItemTable({
                       </div>
                       {item.encounter && (
                         <p className="text-[10px] text-on-surface-variant/60">
-                          {item.instance_name && `${item.instance_name} • `}
-                          {item.encounter}
+                          {item.instance_name &&
+                            `${localizedInstanceName(item.instance_id, item.instance_name, locale)} • `}
+                          {localizedEncounterName(item.encounter_id, item.encounter, locale)}
                         </p>
                       )}
                     </div>
@@ -393,7 +403,7 @@ export default function ItemTable({
                     className={`text-center ${hasEmbellishmentColumn ? 'col-span-3' : 'col-span-5'}`}
                   >
                     <span className="rounded bg-surface-container-highest px-2 py-1 text-[10px] font-bold uppercase text-on-surface-variant">
-                      {itemSlotMap.get(item.item_id) ?? slot}
+                      {slotLabel(itemSlotMap.get(item.item_id) ?? slot, t)}
                     </span>
                   </div>
 

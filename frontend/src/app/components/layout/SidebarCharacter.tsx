@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSimContext } from '../sim-config/SimContext';
-import { specDisplayName } from '../../lib/types';
 import {
   getCharacters,
   upsertCharacter,
@@ -10,10 +9,12 @@ import {
   type SavedCharacter,
 } from '../../lib/saved-characters';
 import { useLanguage } from '../../lib/i18n';
+import { localizedSpecClassName, useLocalizedNames } from '../../lib/localizedNames';
 import { parseCharacterInfo } from '../../lib/character';
 
 export default function SidebarCharacter() {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
   const [open, setOpen] = useState(false);
   const [characters, setCharacters] = useState<SavedCharacter[]>([]);
   const { simcInput, setSimcInput } = useSimContext();
@@ -68,7 +69,7 @@ export default function SidebarCharacter() {
             <>
               <div className="truncate text-[14px] leading-tight">{characterInfo.name}</div>
               <div className="truncate text-[11px] font-normal text-on-surface-variant/60">
-                {specDisplayName(characterInfo.spec)} {characterInfo.className}
+                {localizedSpecClassName(characterInfo.spec, characterInfo.className, locale)}
               </div>
             </>
           ) : (
@@ -109,7 +110,7 @@ export default function SidebarCharacter() {
                     >
                       <div className="truncate text-[13px] font-medium">{char.name}</div>
                       <div className="truncate text-[11px] text-on-surface-variant/50">
-                        {specDisplayName(char.spec)} {char.class}
+                        {localizedSpecClassName(char.spec, char.class, locale)}
                       </div>
                     </button>
                     <button

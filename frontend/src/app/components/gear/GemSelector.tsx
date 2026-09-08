@@ -7,6 +7,7 @@ import type { ResolvedItem } from '../../lib/types';
 import { getWowheadUrl } from '../../lib/useItemInfo';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 import { useLanguage } from '../../lib/i18n';
+import { localizedItemName, useItemNames } from '../../lib/useItemInfo';
 import Switch from '../ui/Switch';
 import CollapsibleSection from '../ui/CollapsibleSection';
 import { statLabel, filterDiamonds, groupGemsByColor, type GemOption } from './itemOptions';
@@ -62,6 +63,7 @@ export default function GemSelector({
   storageKey,
 }: GemSelectorProps) {
   const { t, locale } = useLanguage();
+  useItemNames();
   const [gemOptions, setGemOptions] = useState<GemOption[]>([]);
   useWowheadTooltips([gemOptions]);
 
@@ -179,7 +181,7 @@ export default function GemSelector({
                   <GearItemRow
                     key={d.id}
                     icon={d.itemIcon || ''}
-                    name={d.itemName || d.displayName}
+                    name={localizedItemName(gemItemId, d.itemName || d.displayName, locale)}
                     nameColor={isSelected ? 'text-amber-400' : 'text-on-surface'}
                     href={getWowheadUrl(gemItemId, locale)}
                     details={gemDetails(d)}
@@ -225,7 +227,7 @@ export default function GemSelector({
                     <GearItemRow
                       key={g.id}
                       icon={g.itemIcon || ''}
-                      name={g.itemName || g.displayName}
+                      name={localizedItemName(gemItemId, g.itemName || g.displayName, locale)}
                       nameColor="text-on-surface"
                       href={getWowheadUrl(gemItemId, locale)}
                       details={gemDetails(g)}

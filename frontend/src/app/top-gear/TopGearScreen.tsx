@@ -863,7 +863,7 @@ export default function TopGearScreen() {
                 {comboCount.toLocaleString()}
               </span>
               <span className="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant">
-                {comboCount === 1 ? 'combo' : 'combos'}
+                {comboCount === 1 ? t('topGear.combo') : t('topGear.combos')}
               </span>
             </div>
           ) : undefined

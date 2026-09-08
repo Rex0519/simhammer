@@ -1,9 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { DifficultyDef, DifficultyGroup } from '../../lib/types';
+import { difficultyLabel, type DifficultyDef, type DifficultyGroup } from '../../lib/types';
+import { useLanguage } from '../../lib/i18n';
 import type { UpgradeTracks } from './types';
 
+/** Abbreviated track names. English keeps the short form; every other locale
+ *  gets the full translated track word from `track.*`. */
 const TRACK_SHORT: Record<string, string> = {
   Adventurer: 'Adv',
   Veteran: 'Vet',
@@ -11,6 +14,12 @@ const TRACK_SHORT: Record<string, string> = {
   Hero: 'Hero',
   Myth: 'Myth',
 };
+
+function trackShort(track: string, t: (key: string) => string, locale: string): string {
+  if (locale === 'en_US') return TRACK_SHORT[track] ?? track;
+  const translated = t(`track.${track}`);
+  return translated === `track.${track}` ? (TRACK_SHORT[track] ?? track) : translated;
+}
 
 const TRACK_COLORS: Record<string, string> = {
   Adventurer: 'text-green-400',
@@ -44,6 +53,7 @@ export default function DifficultySelect({
   upgradeTracks,
   isCrafted,
 }: DifficultySelectProps) {
+  const { t, locale } = useLanguage();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -61,7 +71,10 @@ export default function DifficultySelect({
   const selectedTrackColor = selected?.track ? TRACK_COLORS[selected.track] : null;
 
   const groups: { label: string | null; difficulties: DifficultyDef[] }[] = difficultyGroups
-    ? difficultyGroups.map((g) => ({ label: g.label, difficulties: g.difficulties }))
+    ? difficultyGroups.map((g) => ({
+        label: difficultyLabel(g.label, t),
+        difficulties: g.difficulties,
+      }))
     : [{ label: null, difficulties }];
 
   const hasTrack = difficulties.some((d) => d.track && !isCrafted);
@@ -74,16 +87,17 @@ export default function DifficultySelect({
         className="input-field flex w-full items-center justify-between gap-2 text-left"
       >
         <span className="flex items-center gap-2 truncate">
-          <span className="font-medium text-on-surface">{selected?.label ?? 'Select'}</span>
+          <span className="font-medium text-on-surface">
+            {selected ? difficultyLabel(selected.label, t) : t('common.select')}
+          </span>
           {selected?.track && !isCrafted && (
             <span className={`text-xs ${selectedTrackColor ?? 'text-on-surface-variant'}`}>
-              {TRACK_SHORT[selected.track] ?? selected.track} {selected.level}/
-              {selectedDetails?.max}
+              {trackShort(selected.track, t, locale)} {selected.level}/{selectedDetails?.max}
             </span>
           )}
           {selectedDetails?.ilvl && (
             <span className="text-xs tabular-nums text-on-surface-variant">
-              ilvl {selectedDetails.ilvl}
+              {t('loot.ilvl', { ilvl: selectedDetails.ilvl })}
             </span>
           )}
         </span>
@@ -111,7 +125,7 @@ export default function DifficultySelect({
               {group.difficulties.map((d) => {
                 const isActive = value === d.key;
                 const { max, ilvl } = getDiffDetails(d, upgradeTracks);
-                const short = d.track && !isCrafted ? (TRACK_SHORT[d.track] ?? d.track) : null;
+                const short = d.track && !isCrafted ? trackShort(d.track, t, locale) : null;
                 const trackColor = d.track ? TRACK_COLORS[d.track] : null;
                 return (
                   <button
@@ -128,7 +142,7 @@ export default function DifficultySelect({
                     }`}
                     style={{ gridTemplateColumns: hasTrack ? '1fr auto auto' : '1fr auto' }}
                   >
-                    <span className="truncate font-medium">{d.label}</span>
+                    <span className="truncate font-medium">{difficultyLabel(d.label, t)}</span>
                     {hasTrack && (
                       <span
                         className={`text-xs tabular-nums ${isActive ? 'text-gold/70' : (trackColor ?? 'text-on-surface-variant/50')}`}
@@ -139,7 +153,7 @@ export default function DifficultySelect({
                     <span
                       className={`text-right text-xs tabular-nums ${isActive ? 'text-gold/70' : 'text-on-surface-variant/50'}`}
                     >
-                      {ilvl ? `ilvl ${ilvl}` : ''}
+                      {ilvl ? t('loot.ilvl', { ilvl }) : ''}
                     </span>
                   </button>
                 );

@@ -12,6 +12,7 @@ import {
   type MdtConversion,
 } from '../lib/api';
 import { useLanguage } from '../lib/i18n';
+import { localizedInstanceNameByName, useLocalizedNames } from '../lib/localizedNames';
 import type { ActiveRoute } from '../lib/active-route';
 import { getRouteSimParams } from '../lib/route-sim-params';
 import { ROUTES, MDT_ROUTE_SESSION_KEY } from '../lib/routes';
@@ -22,7 +23,8 @@ import { T } from '../components/route-map/routeTheme';
 import { IImport } from '../components/route-map/routeIcons';
 
 export default function RoutePage() {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
   const router = useRouter();
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -193,7 +195,7 @@ export default function RoutePage() {
                 <option value="">{t('route.selectDungeon')}</option>
                 {dungeons.map((d) => (
                   <option key={d.idx} value={d.idx}>
-                    {d.name}
+                    {localizedInstanceNameByName(d.name, locale)}
                   </option>
                 ))}
               </select>

@@ -39,7 +39,11 @@ export interface DropItem {
   quality: number;
   ilevel: number;
   encounter: string;
+  /** Journal encounter id for `encounter`; absent on sources with no boss. */
+  encounter_id?: number;
   instance_name?: string;
+  /** Journal instance id for `instance_name`. */
+  instance_id?: number;
   inventory_type?: number;
   bonus_ids?: number[];
   difficulty_info?: Record<string, TrackInfo>;
@@ -222,8 +226,4 @@ export function getSpecId(className: string, specName: string): number | null {
     }
   })();
   return SPEC_IDS[key] ?? null;
-}
-
-export function formatSpecName(spec: string): string {
-  return spec.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }

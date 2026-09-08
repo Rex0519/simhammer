@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { API_URL } from '../../lib/api';
+import { difficultyLabel } from '../../lib/types';
 import type { ItemOrigin, ResolveGearResponse, ResolvedItem } from '../../lib/types';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 import { useLanguage } from '../../lib/i18n';
@@ -252,7 +253,7 @@ export default function TopGearItemSelector({
       if (item.is_catalyst) {
         parts.push({ text: t('gear.catalyst'), color: 'text-purple-400/80' });
       }
-      if (item.tag) parts.push({ text: item.tag });
+      if (item.tag) parts.push({ text: difficultyLabel(item.tag, t) });
       if (item.upgrade) parts.push({ text: localizedUpgrade(item.upgrade, t) });
       if (item.gem_name) {
         parts.push({

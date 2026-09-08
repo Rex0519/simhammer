@@ -448,6 +448,17 @@ export function localizedGemName(gem: GemInfo, locale: string): string {
   return gem.name;
 }
 
+/** Get a spell name (talent, ability, enchant spell) in the given locale.
+ *  Shares the on-demand queue with items, so a talent tree resolves in the same
+ *  batch as the gear around it. */
+export function localizedSpellName(spellId: number, fallbackName: string, locale: string): string {
+  if (!spellId || !locale || locale === 'en_US') return fallbackName;
+  const name = spellNamesMap[spellId]?.[locale];
+  if (name) return name;
+  requestLocalizedName('spell', spellId, locale);
+  return fallbackName;
+}
+
 const ICON_BASE = 'https://render.worldofwarcraft.com/icons/56';
 const FALLBACK_ICON = 'inv_misc_questionmark';
 

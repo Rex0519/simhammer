@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { simRow } from '../../lib/api';
-import { SLOT_LABELS, specDisplayName } from '../../lib/types';
+import { slotLabel } from '../../lib/types';
 import {
   QUALITY_COLORS,
   getWowheadData,
@@ -16,6 +16,12 @@ import {
 } from '../../lib/useItemInfo';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
 import { useLanguage } from '../../lib/i18n';
+import {
+  localizedCurrencyName,
+  localizedEncounterNameByName,
+  localizedSpecName,
+  useLocalizedNames,
+} from '../../lib/localizedNames';
 import { getUpgradeCurrencies } from '../../lib/upgradeCurrencies';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 import type { GroupMode, ResultItem, TopGearResult } from './topGearResultsTypes';
@@ -157,7 +163,8 @@ export default function TopGearRankings({
   gemInfoMap,
   sourceJobId,
 }: TopGearRankingsProps) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
   const grouped = useMemo(() => groupResults(results, groupMode), [results, groupMode]);
 
   return (
@@ -204,7 +211,10 @@ export default function TopGearRankings({
               group.length > 0
                 ? group.reduce((sum, result) => sum + Math.max(0, result.delta), 0) / group.length
                 : 0;
-            const groupLabel = groupMode === 'slot' ? SLOT_LABELS[groupKey] || groupKey : groupKey;
+            const groupLabel =
+              groupMode === 'slot'
+                ? slotLabel(groupKey, t)
+                : localizedEncounterNameByName(groupKey, locale);
 
             return (
               <div key={groupKey}>
@@ -394,7 +404,8 @@ const ResultRow = memo(function ResultRow({
   /** When present, "Combo N" rows show a "Sim" button re-running the combo as a Quick Sim. */
   sourceJobId?: string;
 }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
   const router = useRouter();
   const [verifying, setVerifying] = useState(false);
   const barWidth = maxDps > 0 ? (result.dps / maxDps) * 100 : 0;
@@ -420,7 +431,7 @@ const ResultRow = memo(function ResultRow({
   const talentBadge = hasTalentBuild ? (
     <span className="inline-flex shrink-0 items-center gap-1 rounded bg-purple-500/10 px-1.5 py-px text-[11px] font-medium">
       {result.talent_spec && (
-        <span className="text-purple-300">{specDisplayName(result.talent_spec)}</span>
+        <span className="text-purple-300">{localizedSpecName(result.talent_spec, locale)}</span>
       )}
       <span className="text-purple-400/70">{result.talent_build}</span>
     </span>
@@ -525,7 +536,9 @@ const ResultRow = memo(function ResultRow({
                 )}
                 {t('topGear.budgetSpend', {
                   amount: amount.toLocaleString(),
-                  currency: meta?.name || t('upgradeCompare.unknownCurrency', { id }),
+                  currency: meta
+                    ? localizedCurrencyName(meta.id, meta.name, locale)
+                    : t('upgradeCompare.unknownCurrency', { id }),
                 })}
               </span>
             );
@@ -624,7 +637,7 @@ function ItemTag({
   );
   const icon = info?.icon || 'inv_misc_questionmark';
   const wowheadData = item.item_id > 0 ? getWowheadData(item) : undefined;
-  const slotName = SLOT_LABELS[item.slot] || item.slot;
+  const slotName = slotLabel(item.slot, t);
 
   return (
     <div

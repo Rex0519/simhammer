@@ -3,6 +3,7 @@
 
 import { useState } from 'react';
 import { useLanguage } from '../../lib/i18n';
+import { localizedSpellName, useItemNames } from '../../lib/useItemInfo';
 import ResultsChartRow from './ResultsChartRow';
 import { useSpellIcons } from './useSpellIcons';
 
@@ -34,8 +35,15 @@ const SCHOOL_COLORS: Record<string, string> = {
   arcane: '#E88AED',
 };
 
+/** SimC ability name, localized through its spell when the sim reported one. */
+function abilityDisplayName(ability: Ability, locale: string): string {
+  const fallback = ability.name.replace(/_/g, ' ');
+  return ability.spell_id ? localizedSpellName(ability.spell_id, fallback, locale) : fallback;
+}
+
 export default function ResultsChart({ dps, abilities }: ResultsChartProps) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useItemNames();
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const totalDps = dps || abilities.reduce((sum, ability) => sum + ability.portion_dps, 0);
   const top = abilities.slice(0, 15);
@@ -63,6 +71,7 @@ export default function ResultsChart({ dps, abilities }: ResultsChartProps) {
             <div key={index}>
               <ResultsChartRow
                 ability={ability}
+                displayName={abilityDisplayName(ability, locale)}
                 color={color}
                 percent={percent}
                 barWidth={barWidth}
@@ -94,6 +103,7 @@ export default function ResultsChart({ dps, abilities }: ResultsChartProps) {
                     <ResultsChartRow
                       key={childIndex}
                       ability={child}
+                      displayName={abilityDisplayName(child, locale)}
                       color={childColor}
                       percent={childPercent}
                       barWidth={childBarWidth}

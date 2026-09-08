@@ -9,7 +9,7 @@ import { useSimSubmit } from '../lib/useSimSubmit';
 import TalentPicker from '../components/talents/TalentPicker';
 import GearOverview from '../components/gear/GearOverview';
 import ConfigFooter from '../components/sim-config/ConfigPanel';
-import { specDisplayName } from '../lib/types';
+import { localizedSpecClassName, useLocalizedNames } from '../lib/localizedNames';
 import { API_URL } from '../lib/api';
 import { useResolvedGear, equippedGearItems } from '../lib/useResolvedGear';
 import { useLanguage } from '../lib/i18n';
@@ -55,7 +55,8 @@ function useLastSim(name: string | null, realm: string | null): LastSim | null {
 
 export default function QuickSimPage() {
   const { simcInput, hasInput, statWeights } = useSimContext();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
   const [compute, setCompute] = useComputeChoice('quick');
 
   const characterInfo = useMemo(() => parseCharacterInfo(simcInput), [simcInput]);
@@ -129,7 +130,7 @@ export default function QuickSimPage() {
               </h2>
               <div className="mt-1 flex items-center gap-3">
                 <span className="rounded bg-primary-container/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary">
-                  {specDisplayName(characterInfo.spec)} {characterInfo.className.replace(/_/g, ' ')}
+                  {localizedSpecClassName(characterInfo.spec, characterInfo.className, locale)}
                 </span>
                 {characterInfo.realm && (
                   <span className="border-l border-outline-variant/30 pl-3 text-sm text-on-surface-variant">

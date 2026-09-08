@@ -214,6 +214,85 @@ export const SLOT_LABELS: Record<string, string> = {
   off_hand: 'Off Hand',
 };
 
+/** Locale key per gear slot. Keyed by both the SimC slot id (`main_hand`) and
+ *  the display slot name the drop payloads group by (`Main Hand`), so one
+ *  lookup serves the gear screens and the Drop Finder. */
+export const SLOT_LABEL_KEYS: Record<string, string> = {
+  head: 'slot.head',
+  neck: 'slot.neck',
+  shoulder: 'slot.shoulder',
+  back: 'slot.back',
+  chest: 'slot.chest',
+  wrist: 'slot.wrist',
+  hands: 'slot.hands',
+  waist: 'slot.waist',
+  legs: 'slot.legs',
+  feet: 'slot.feet',
+  finger1: 'slot.ring1',
+  finger2: 'slot.ring2',
+  trinket1: 'slot.trinket1',
+  trinket2: 'slot.trinket2',
+  main_hand: 'slot.mainHand',
+  off_hand: 'slot.offHand',
+  Head: 'slot.head',
+  Neck: 'slot.neck',
+  Shoulder: 'slot.shoulder',
+  Back: 'slot.back',
+  Chest: 'slot.chest',
+  Wrist: 'slot.wrist',
+  Hands: 'slot.hands',
+  Waist: 'slot.waist',
+  Legs: 'slot.legs',
+  Feet: 'slot.feet',
+  Finger: 'slot.rings',
+  Trinket: 'slot.trinkets',
+  'Main Hand': 'slot.mainHand',
+  'Off Hand': 'slot.offHand',
+  'One-Hand': 'slot.oneHand',
+  'Two-Hand': 'slot.twoHand',
+  Ranged: 'slot.ranged',
+  Held: 'slot.held',
+  Shield: 'slot.shield',
+  'Held In Off-Hand': 'slot.offHand',
+};
+
+/** Translated slot label; unknown slots keep the English `SLOT_LABELS` value. */
+export function slotLabel(slot: string, t: (key: string) => string): string {
+  const key = SLOT_LABEL_KEYS[slot];
+  return key ? t(key) : (SLOT_LABELS[slot] ?? slot);
+}
+
+/** Locale key per English difficulty word. Covers the season-config difficulty
+ *  labels and the difficulty tag Blizzard stamps on raid items. */
+const DIFFICULTY_LABEL_KEYS: Record<string, string> = {
+  LFR: 'difficulty.lfr',
+  'Raid Finder': 'difficulty.raidFinder',
+  Normal: 'difficulty.normal',
+  Heroic: 'difficulty.heroic',
+  Mythic: 'difficulty.mythic',
+  'Mythic 0': 'difficulty.mythicZero',
+  'Mythic+': 'difficulty.mythicPlus',
+};
+
+/** Translated difficulty label. Words with no `difficulty.*` key fall back to
+ *  the upgrade-track keys (`track.*`), which cover the Catalyst and delve
+ *  difficulty groups (Adventurer / Veteran / Champion / Hero / Myth). Labels we
+ *  ship no key for at all (crest names, "+7", PvP rank names) come back
+ *  unchanged; "Mythic 5" keeps its number. */
+export function difficultyLabel(label: string, t: (key: string) => string): string {
+  if (!label) return label;
+  const exact = DIFFICULTY_LABEL_KEYS[label];
+  if (exact) return t(exact);
+  const parts = label.match(/^(\S+)( \d+)$/);
+  const word = parts ? parts[1] : label;
+  const suffix = parts ? parts[2] : '';
+  const wordKey = DIFFICULTY_LABEL_KEYS[word];
+  if (wordKey) return `${t(wordKey)}${suffix}`;
+  const trackKey = `track.${word}`;
+  const track = t(trackKey);
+  return track === trackKey ? label : `${track}${suffix}`;
+}
+
 // ---- Class / Spec Data ----
 
 /** All specs for each class (SimC names). Matches backend CLASSES array. */
@@ -233,6 +312,25 @@ export const CLASS_SPECS: Record<string, string[]> = {
   demon_hunter: ['havoc', 'vengeance'],
   demonhunter: ['havoc', 'vengeance'],
   evoker: ['devastation', 'preservation', 'augmentation'],
+};
+
+/** SimC class name → `ChrClasses` ID, for the localized class-name bundle. */
+export const CLASS_NAME_TO_ID: Record<string, number> = {
+  warrior: 1,
+  paladin: 2,
+  hunter: 3,
+  rogue: 4,
+  priest: 5,
+  death_knight: 6,
+  deathknight: 6,
+  shaman: 7,
+  mage: 8,
+  warlock: 9,
+  monk: 10,
+  druid: 11,
+  demon_hunter: 12,
+  demonhunter: 12,
+  evoker: 13,
 };
 
 /** Spec ID → SimC spec name mapping. */

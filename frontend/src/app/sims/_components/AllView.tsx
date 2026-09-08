@@ -2,7 +2,7 @@ import { useMemo, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import type { JobOverviewSummary } from '../../lib/api';
 import { isActiveStatus } from '../../lib/useActiveSims';
-import { specDisplayName } from '../../lib/types';
+import { localizedClassName, useLocalizedNames } from '../../lib/localizedNames';
 import { useLanguage } from '../../lib/i18n';
 import { formatDps } from '../../lib/format';
 import { JobActionButtons } from './JobActionButtons';
@@ -35,7 +35,8 @@ function groupByBatch(sims: JobOverviewSummary[]): HistoryEntry[] {
  * is rendered inline beside the timestamp to keep row heights uniform. */
 function HistoryRow({ job, trailing }: { job: JobOverviewSummary; trailing: ReactNode }) {
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
   const isFailed = job.status === 'failed';
   const simTypeColor =
     SIM_TYPE_COLORS[job.sim_type] ||
@@ -64,7 +65,7 @@ function HistoryRow({ job, trailing }: { job: JobOverviewSummary; trailing: Reac
           {isFailed && job.error_message
             ? job.error_message.slice(0, 60)
             : job.player_class
-              ? specDisplayName(job.player_class)
+              ? localizedClassName(job.player_class, locale)
               : job.sim_type}
         </p>
       </div>

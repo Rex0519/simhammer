@@ -13,9 +13,11 @@ import {
 } from './reportTypes';
 import ItemCentricView from './ItemCentricView';
 import MatrixView from './MatrixView';
-import { SLOT_LABELS } from '../../lib/types';
+import { slotLabel } from '../../lib/types';
+import { useLanguage } from '../../lib/i18n';
 
 export default function RosterReportView({ report }: { report: RosterReport }) {
+  const { t } = useLanguage();
   const [mode, setMode] = useState<ReportViewMode>('item');
   const [filters, setFilters] = useState<ReportFilters>(EMPTY_FILTERS);
 
@@ -160,7 +162,7 @@ export default function RosterReportView({ report }: { report: RosterReport }) {
                 onClick={() => toggleSlot(s)}
                 className={`${chipBase} ${on ? chipOn : chipOff}`}
               >
-                {SLOT_LABELS[s] ?? s}
+                {slotLabel(s, t)}
               </button>
             );
           })}

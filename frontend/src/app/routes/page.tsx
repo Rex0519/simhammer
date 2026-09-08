@@ -9,6 +9,7 @@ import RouteRow from '../components/routes/RouteRow';
 import { T } from '../components/route-map/routeTheme';
 import { IList } from '../components/route-map/routeIcons';
 import { useLanguage } from '../lib/i18n';
+import { localizedInstanceNameByName, useLocalizedNames } from '../lib/localizedNames';
 
 const GroupHead = ({ name, count }: { name: string; count: number }) => (
   <div style={{ display: 'flex', alignItems: 'center', gap: 11, margin: '24px 0 11px' }}>
@@ -40,7 +41,8 @@ const GroupHead = ({ name, count }: { name: string; count: number }) => (
 );
 
 export default function RoutesManagerPage() {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
   const [routes, setRoutes] = useState<SavedRoute[]>([]);
   const [dungeons, setDungeons] = useState<DungeonSummary[]>([]);
 
@@ -80,7 +82,10 @@ export default function RoutesManagerPage() {
 
         {groups.map((g) => (
           <div key={g.key ?? 'other'}>
-            <GroupHead name={g.name} count={g.routes.length} />
+            <GroupHead
+              name={g.key == null ? g.name : localizedInstanceNameByName(g.name, locale)}
+              count={g.routes.length}
+            />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {g.routes.map((r) => (
                 <RouteRow key={r.id} route={r} onChanged={refresh} />

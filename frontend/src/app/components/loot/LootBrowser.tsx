@@ -16,10 +16,14 @@ import CategorySelector from './CategorySelector';
 import TalentPicker from '../talents/TalentPicker';
 import { useLanguage } from '../../lib/i18n';
 import {
+  localizedInstanceName,
+  localizedSpecName,
+  useLocalizedNames,
+} from '../../lib/localizedNames';
+import {
   detectClass,
   detectSpec,
   dropUid,
-  formatSpecName,
   getClassSpecs,
   getTrackInfo,
   type DropItem,
@@ -148,7 +152,8 @@ export interface LootBrowserProps {
 // --- Browser ---
 
 export default function LootBrowser({ footer }: LootBrowserProps) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
   const { simcInput } = useSimContext();
   const [category, setCategory] = useState('mplus');
 
@@ -454,7 +459,8 @@ export default function LootBrowser({ footer }: LootBrowserProps) {
   }
 
   const headerLabel =
-    selectedInstance?.name ||
+    (selectedInstance &&
+      localizedInstanceName(selectedInstance.id, selectedInstance.name, locale)) ||
     (selectedId.startsWith('type:') ? (isRaid ? t('loot.allRaids') : t('loot.allDungeons')) : '');
 
   // Dungeon pool summary for context
@@ -697,7 +703,7 @@ export default function LootBrowser({ footer }: LootBrowserProps) {
                             : 'bg-surface-container-high text-on-surface-variant/40 hover:bg-surface-container-highest hover:text-on-surface-variant'
                         }`}
                       >
-                        {formatSpecName(spec)}
+                        {localizedSpecName(spec, locale)}
                         {isMain && (
                           <span className="ml-1 text-[11px] opacity-50">
                             {t('dropFinder.mainSpec')}

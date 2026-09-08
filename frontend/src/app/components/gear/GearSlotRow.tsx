@@ -14,7 +14,7 @@ import {
 } from '../../lib/useItemInfo';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
 import { useLanguage } from '../../lib/i18n';
-import { SLOT_LABELS } from '../../lib/types';
+import { difficultyLabel, slotLabel } from '../../lib/types';
 import type { GearItem } from './gearOverviewTypes';
 
 interface GearSlotRowProps {
@@ -52,7 +52,7 @@ export default function GearSlotRow({
       >
         <div className="h-7 w-7 shrink-0 rounded-md bg-surface-container-high" />
         <div className={rtl ? 'text-right' : ''}>
-          <p className="text-[13px] text-on-surface-variant">{SLOT_LABELS[slot] || slot}</p>
+          <p className="text-[13px] text-on-surface-variant">{slotLabel(slot, t)}</p>
           <p className="text-[11px] text-on-surface-variant/50">{t('gear.empty')}</p>
         </div>
       </div>
@@ -159,9 +159,9 @@ export default function GearSlotRow({
           )}
         </div>
         <p className="truncate text-[11px] text-muted">
-          {SLOT_LABELS[slot] || slot}
+          {slotLabel(slot, t)}
           {item.ilevel > 0 && ` · ${item.ilevel}`}
-          {info?.tag && ` · ${info.tag}`}
+          {info?.tag && ` · ${difficultyLabel(info.tag, t)}`}
           {gems.length > 0 ? (
             <span className="text-sky-400/70">
               {' '}

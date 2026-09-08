@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLanguage } from '../../lib/i18n';
+import { localizedInstanceName, useLocalizedNames } from '../../lib/localizedNames';
 
 interface DungeonDrawerProps {
   instances: { id: number; name: string }[];
@@ -18,29 +19,38 @@ export default function DungeonDrawer({
   selectedIds,
   onChange,
 }: DungeonDrawerProps) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
   const [open, setOpen] = useState(false);
 
   const allSelected = instances.length > 0 && instances.every((i) => selectedIds.has(String(i.id)));
   const count = instances.filter((i) => selectedIds.has(String(i.id))).length;
 
-  const summaryLabel = useMemo(() => {
+  // Computed at render, not memoized: both read localized names, which arrive
+  // asynchronously, and a memo would keep serving the English strings it was
+  // built from until an unrelated dep changed.
+  function computeSummaryLabel(): string {
     if (count === 0) return t('dropFinder.noneSelected') ?? 'None selected';
     if (allSelected) return allLabel;
     if (count === 1) {
       const sel = instances.find((i) => selectedIds.has(String(i.id)));
-      return sel?.name ?? `${count} selected`;
+      return sel ? localizedInstanceName(sel.id, sel.name, locale) : `${count} selected`;
     }
     return `${count} selected`;
-  }, [count, allSelected, allLabel, instances, selectedIds, t]);
+  }
 
-  const summaryDetail = useMemo(() => {
+  function computeSummaryDetail(): string {
     if (count === 0) return t('dropFinder.chooseSource') ?? 'Choose at least one source';
     if (allSelected) return t('dropFinder.fullPool') ?? 'Full seasonal pool included';
-    const names = instances.filter((i) => selectedIds.has(String(i.id))).map((i) => i.name);
+    const names = instances
+      .filter((i) => selectedIds.has(String(i.id)))
+      .map((i) => localizedInstanceName(i.id, i.name, locale));
     if (names.length <= 2) return names.join(' · ');
     return names.slice(0, 2).join(' · ') + ' …';
-  }, [count, allSelected, instances, selectedIds, t]);
+  }
+
+  const summaryLabel = computeSummaryLabel();
+  const summaryDetail = computeSummaryDetail();
 
   function toggleInstance(id: string) {
     const next = new Set(selectedIds);
@@ -104,7 +114,9 @@ export default function DungeonDrawer({
                   onChange={() => toggleInstance(String(inst.id))}
                   className="h-4 w-4 accent-gold"
                 />
-                <span className="text-sm text-on-surface">{inst.name}</span>
+                <span className="text-sm text-on-surface">
+                  {localizedInstanceName(inst.id, inst.name, locale)}
+                </span>
               </label>
             );
           })}

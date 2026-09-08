@@ -7,7 +7,7 @@ import { QUALITY_TEXT_CLASS, qualityBorderColor } from '../../lib/qualityColors'
 import { iconProps } from '../../lib/useItemInfo';
 import Checkbox from '../ui/Checkbox';
 import { detectClass, detectSpec } from '../loot/types';
-import type { ResolvedItem } from '../../lib/types';
+import { SLOT_LABEL_KEYS, type ResolvedItem } from '../../lib/types';
 
 interface IlvlOption {
   ilvl: number;
@@ -33,6 +33,7 @@ export interface AddItemSearchProps {
 
 const RESULT_LIMIT = 50;
 
+/** Inventory type -> the English slot name `SLOT_LABEL_KEYS` is keyed by. */
 const SLOT_LABELS: Record<number, string> = {
   1: 'Head',
   2: 'Neck',
@@ -57,8 +58,15 @@ const SLOT_LABELS: Record<number, string> = {
   26: 'Ranged',
 };
 
+function inventoryTypeLabel(type: number, t: (key: string) => string): string {
+  const name = SLOT_LABELS[type];
+  if (!name) return '';
+  const key = SLOT_LABEL_KEYS[name];
+  return key ? t(key) : name;
+}
+
 export default function AddItemSearch({ simcInput, onItemsResolved }: AddItemSearchProps) {
-  const { locale } = useLanguage();
+  const { t, locale } = useLanguage();
   const className = useMemo(() => detectClass(simcInput), [simcInput]);
   const spec = useMemo(() => detectSpec(simcInput), [simcInput]);
   const [query, setQuery] = useState('');
@@ -144,17 +152,14 @@ export default function AddItemSearch({ simcInput, onItemsResolved }: AddItemSea
     <div className="card space-y-4 p-5">
       <div>
         <h3 className="font-headline text-base font-black uppercase tracking-tight text-on-surface">
-          Item Search
+          {t('addItem.title')}
         </h3>
-        <p className="mt-1 text-xs text-on-surface-variant/70">
-          Search items your class can use and add them at a chosen item level. Lets you sim gear you
-          don&apos;t own yet.
-        </p>
+        <p className="mt-1 text-xs text-on-surface-variant/70">{t('addItem.desc')}</p>
       </div>
 
       <div>
         <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60">
-          Name
+          {t('addItem.name')}
         </label>
         <div className="relative">
           <svg
@@ -172,7 +177,7 @@ export default function AddItemSearch({ simcInput, onItemsResolved }: AddItemSea
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by item name or id"
+            placeholder={t('addItem.placeholder')}
             className="h-10 w-full rounded-lg border border-transparent bg-surface-container-high py-2 pl-10 pr-10 text-sm text-on-surface placeholder-on-surface-variant/45 outline-none transition-all duration-150 hover:bg-surface-container-highest focus:border-gold/40 focus:bg-surface-container-highest focus:ring-2 focus:ring-gold/15"
           />
           {hasQuery && (
@@ -180,7 +185,7 @@ export default function AddItemSearch({ simcInput, onItemsResolved }: AddItemSea
               type="button"
               onClick={() => setQuery('')}
               className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-on-surface-variant/55 transition-colors hover:bg-surface-container-highest hover:text-on-surface"
-              aria-label="Clear search"
+              aria-label={t('loot.clearSearch')}
             >
               <svg
                 viewBox="0 0 12 12"
@@ -204,10 +209,10 @@ export default function AddItemSearch({ simcInput, onItemsResolved }: AddItemSea
             size="sm"
             checked={seasonalOnly}
             onChange={() => setSeasonalOnly((v) => !v)}
-            aria-label="Seasonal items only"
+            aria-label={t('addItem.seasonalOnly')}
           />
-          Seasonal items only
-          <span className="text-xs text-on-surface-variant/50">(off: search every expansion)</span>
+          {t('addItem.seasonalOnly')}
+          <span className="text-xs text-on-surface-variant/50">{t('addItem.seasonalOff')}</span>
         </label>
 
         {/* The all-expansions search does no spec filtering, so this would be a
@@ -219,12 +224,10 @@ export default function AddItemSearch({ simcInput, onItemsResolved }: AddItemSea
               size="sm"
               checked={lootSpecOnly}
               onChange={() => setLootSpecOnly((v) => !v)}
-              aria-label="My loot spec only"
+              aria-label={t('addItem.lootSpecOnly')}
             />
-            My loot spec only
-            <span className="text-xs text-on-surface-variant/50">
-              (off: any gear your class can equip)
-            </span>
+            {t('addItem.lootSpecOnly')}
+            <span className="text-xs text-on-surface-variant/50">{t('addItem.lootSpecOff')}</span>
           </label>
         )}
       </div>
@@ -262,7 +265,7 @@ export default function AddItemSearch({ simcInput, onItemsResolved }: AddItemSea
                   <div className="min-w-0 flex-1">
                     <p className={`truncate text-[13px] font-bold ${qualityColor}`}>{item.name}</p>
                     <p className="text-[11px] text-on-surface-variant/60">
-                      {SLOT_LABELS[item.inventory_type] ?? ''}
+                      {inventoryTypeLabel(item.inventory_type, t)}
                     </p>
                   </div>
                   {/* Only the levels this item can actually exist at. */}
@@ -271,7 +274,7 @@ export default function AddItemSearch({ simcInput, onItemsResolved }: AddItemSea
                     onChange={(e) =>
                       setChosenIlvl((prev) => ({ ...prev, [item.item_id]: Number(e.target.value) }))
                     }
-                    aria-label={`Item level for ${item.name}`}
+                    aria-label={t('addItem.itemLevelFor', { name: item.name })}
                     className="h-7 shrink-0 rounded-md border border-transparent bg-surface-container-highest px-1 text-xs font-bold tabular-nums text-on-surface outline-none transition-all duration-150 hover:border-gold/30 focus:border-gold/40 focus:ring-2 focus:ring-gold/15"
                   >
                     {options.map((opt) => (
@@ -284,7 +287,7 @@ export default function AddItemSearch({ simcInput, onItemsResolved }: AddItemSea
                     type="button"
                     disabled={isAdding}
                     onClick={() => handleAdd(item, option)}
-                    aria-label={`Add ${item.name}`}
+                    aria-label={t('addItem.add', { name: item.name })}
                     className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-container-highest text-on-surface-variant/50 transition-colors hover:bg-gold/25 hover:text-gold disabled:opacity-50 group-hover:bg-gold/15 group-hover:text-gold"
                   >
                     {isAdding ? (
@@ -323,14 +326,16 @@ export default function AddItemSearch({ simcInput, onItemsResolved }: AddItemSea
           </div>
           {capped && (
             <p className="text-center text-xs text-on-surface-variant/50">
-              More items match this search than can be shown. Make your search more specific.
+              {t('addItem.tooManyResults')}
             </p>
           )}
         </>
       )}
 
       {hasQuery && results.length === 0 && (
-        <p className="py-2 text-center text-sm text-on-surface-variant/50">No items found.</p>
+        <p className="py-2 text-center text-sm text-on-surface-variant/50">
+          {t('addItem.noResults')}
+        </p>
       )}
     </div>
   );

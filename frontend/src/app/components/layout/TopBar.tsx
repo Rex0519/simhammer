@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSimContext } from '../sim-config/SimContext';
-import { specDisplayName } from '../../lib/types';
 import {
   getCharacters,
   upsertCharacter,
@@ -17,12 +16,18 @@ import DesktopAppLink from './DesktopAppLink';
 import ActiveSimsIndicator from './ActiveSimsIndicator';
 import { useIsDesktop } from '../../lib/useIsDesktop';
 import { useLanguage } from '../../lib/i18n';
+import {
+  localizedSpecClassName,
+  localizedSpecName,
+  useLocalizedNames,
+} from '../../lib/localizedNames';
 import { isValidSimcExport, validateChecksum } from '../../lib/simcDetect';
 import { parseCharacterInfo } from '../../lib/character';
 
 export default function TopBar() {
   const isDesktop = useIsDesktop();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const [showChars, setShowChars] = useState(false);
@@ -233,7 +238,7 @@ export default function TopBar() {
             <span className="font-headline text-sm font-bold text-on-surface">
               {characterInfo.name}
               <span className="ml-1.5 font-normal text-on-surface-variant/50">
-                {specDisplayName(characterInfo.spec)}
+                {localizedSpecName(characterInfo.spec, locale)}
               </span>
             </span>
           ) : (
@@ -316,7 +321,8 @@ export default function TopBar() {
                     >
                       <div className="text-sm font-medium">{char.name}</div>
                       <div className="text-[12px] text-on-surface-variant/50">
-                        {specDisplayName(char.spec)} {char.class} &middot; {char.realm}
+                        {localizedSpecClassName(char.spec, char.class, locale)} &middot;{' '}
+                        {char.realm}
                       </div>
                     </button>
                     <button

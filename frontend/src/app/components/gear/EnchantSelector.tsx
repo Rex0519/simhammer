@@ -7,6 +7,8 @@ import type { ResolvedItem } from '../../lib/types';
 import { getWowheadUrl } from '../../lib/useItemInfo';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 import { useLanguage } from '../../lib/i18n';
+import { localizedEnchantDisplayName, useLocalizedNames } from '../../lib/localizedNames';
+import { localizedItemName, useItemNames } from '../../lib/useItemInfo';
 import CollapsibleSection from '../ui/CollapsibleSection';
 import { statLabel, ENCHANT_SLOTS, type ItemOption } from './itemOptions';
 
@@ -42,6 +44,14 @@ function enchantDetails(e: ItemOption): { text: string; color?: string }[] {
   return parts;
 }
 
+/** Enchant option name: the backing item when there is one (the on-demand
+ *  item-name path), otherwise the `SpellItemEnchantment` bundle by enchant id. */
+function enchantOptionName(e: ItemOption, locale: string): string {
+  const fallback = e.itemName || e.displayName;
+  if (e.itemId) return localizedItemName(e.itemId, fallback, locale);
+  return localizedEnchantDisplayName(e.id, fallback, locale);
+}
+
 export default function EnchantSelector({
   equippedSlots,
   enchantSelections,
@@ -50,6 +60,8 @@ export default function EnchantSelector({
   onDeselectAllEnchants,
 }: EnchantSelectorProps) {
   const { t, locale } = useLanguage();
+  useItemNames();
+  useLocalizedNames();
   const [enchantOptions, setItemOptions] = useState<Record<string, ItemOption[]>>({});
   useWowheadTooltips([enchantOptions]);
 
@@ -118,7 +130,7 @@ export default function EnchantSelector({
           const equippedOption =
             equippedId > 0 ? sortedEnchants[slot].find((e) => e.id === equippedId) : undefined;
           const equippedName = equippedOption
-            ? equippedOption.itemName || equippedOption.displayName
+            ? enchantOptionName(equippedOption, locale)
             : equippedSlots[slot]?.enchant_name || '';
 
           const candidates = sortedEnchants[slot].filter((e) => e.id !== equippedId);
@@ -172,7 +184,7 @@ export default function EnchantSelector({
                   <GearItemRow
                     key={e.id}
                     icon={e.itemIcon || ''}
-                    name={e.itemName || e.displayName}
+                    name={enchantOptionName(e, locale)}
                     nameColor="text-on-surface"
                     href={e.itemId ? getWowheadUrl(e.itemId, locale) : undefined}
                     details={enchantDetails(e)}
