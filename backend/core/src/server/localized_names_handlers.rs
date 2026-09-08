@@ -8,6 +8,7 @@ use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
 use crate::db::LocalizedNamesRepo;
+use crate::item_db;
 use crate::localized_names::{parse_tooltip_name, tooltip_url, wowhead_locale_id};
 
 /// Cap per request so one client can't fan out unboundedly onto Wowhead.
@@ -107,6 +108,26 @@ async fn resolve_names(
     names
 }
 
+/// Splits `ids` into the names the loaded `localized-names.<locale>.json`
+/// already answers and the ids left for the SQLite cache / Wowhead. The file
+/// wins: it is a Blizzard client export, the cache holds scraped tooltips.
+fn split_preloaded(
+    ids: &[u64],
+    lookup: impl Fn(u64) -> Option<String>,
+) -> (HashMap<u64, String>, Vec<u64>) {
+    let mut loaded = HashMap::new();
+    let mut missing = Vec::new();
+    for &id in ids {
+        match lookup(id) {
+            Some(name) => {
+                loaded.insert(id, name);
+            }
+            None => missing.push(id),
+        }
+    }
+    (loaded, missing)
+}
+
 pub(super) async fn localize_names(
     repo: web::Data<LocalizedNamesRepo>,
     req: web::Json<LocalizeRequest>,
@@ -120,9 +141,46 @@ pub(super) async fn localize_names(
             .json(json!({"detail": format!("Provide at most {MAX_IDS} ids")}));
     }
 
-    let items = resolve_names(&repo, "item", &req.locale, locale_id, &req.items).await;
-    let spells = resolve_names(&repo, "spell", &req.locale, locale_id, &req.spells).await;
+    // Loaded bundle first, then the cache, then Wowhead. Item names live in
+    // ITEM_NAMES (the bundle is merged into it at load).
+    let (loaded_items, missing_items) = split_preloaded(&req.items, |id| {
+        item_db::item_names()?.get(&id)?.get(&req.locale).cloned()
+    });
+    let (loaded_spells, missing_spells) = split_preloaded(&req.spells, |id| {
+        item_db::localized_names(&req.locale)?
+            .spells
+            .get(&id)
+            .cloned()
+    });
+
+    let mut items = resolve_names(&repo, "item", &req.locale, locale_id, &missing_items).await;
+    items.extend(loaded_items);
+    let mut spells = resolve_names(&repo, "spell", &req.locale, locale_id, &missing_spells).await;
+    spells.extend(loaded_spells);
     HttpResponse::Ok().json(json!({ "items": items, "spells": spells }))
+}
+
+/// `GET /api/localized-names/{locale}` response: the loaded bundle's small
+/// tables, serialized by reference so the maps are never cloned.
+#[derive(Serialize)]
+struct LocalizedNamesResponse<'a> {
+    locale: &'a str,
+    #[serde(flatten)]
+    names: &'a item_db::LocalizedNames,
+}
+
+pub(super) async fn get_localized_names(path: web::Path<String>) -> HttpResponse {
+    let locale = path.into_inner();
+    match item_db::localized_names(&locale) {
+        Some(names) => HttpResponse::Ok()
+            .insert_header(("Cache-Control", "public, max-age=3600"))
+            .json(LocalizedNamesResponse {
+                locale: &locale,
+                names,
+            }),
+        None => HttpResponse::NotFound()
+            .json(json!({"detail": format!("No localized names for locale '{locale}'")})),
+    }
 }
 
 /// `GET /api/item-names` response: the bundled 175k-entry map with cached
@@ -204,6 +262,18 @@ mod tests {
         assert_eq!(value["1"]["de_DE"], "Helm de");
         assert_eq!(value["1"]["zh_CN"], "头盔");
         assert_eq!(value["2"]["zh_CN"], "戒指");
+    }
+
+    // Guards the resolution order: an id the loaded bundle answers is returned
+    // from the file and never reaches the SQLite cache or Wowhead, and only the
+    // rest is left for them.
+    #[test]
+    fn loaded_bundle_answers_before_the_cache() {
+        let bundle = HashMap::from([(1822u64, "斜掠".to_string())]);
+        let (loaded, missing) = split_preloaded(&[1822, 7967], |id| bundle.get(&id).cloned());
+        assert_eq!(loaded.get(&1822).map(String::as_str), Some("斜掠"));
+        assert!(!loaded.contains_key(&7967));
+        assert_eq!(missing, vec![7967], "only bundle misses hit cache/Wowhead");
     }
 
     // Guards the no-cache fast path: the response is the bundled map untouched.

@@ -21,6 +21,7 @@ struct Drop {
     encounter_key: String,
     encounter: String,
     instance_name: String,
+    instance_id: Option<u64>,
     delta: f64,
 }
 
@@ -29,6 +30,7 @@ struct Group {
     key: String,
     label: String,
     instance_name: String,
+    instance_id: Option<u64>,
     drops: Vec<usize>,
 }
 
@@ -37,6 +39,7 @@ struct Metrics {
     key: String,
     label: String,
     instance_name: String,
+    instance_id: Option<u64>,
     items: usize,
     upgrades: usize,
     expected: f64,
@@ -102,6 +105,7 @@ pub fn summarize(result: &Value) -> Option<Value> {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string(),
+                instance_id: item.get("instance_id").and_then(|v| v.as_u64()),
                 delta,
             });
             if delta > entry.delta {
@@ -124,6 +128,7 @@ pub fn summarize(result: &Value) -> Option<Value> {
                 key: drop.encounter_key.clone(),
                 label: drop.encounter.clone(),
                 instance_name: drop.instance_name.clone(),
+                instance_id: drop.instance_id,
                 drops: Vec::new(),
             });
         // A boss's first drop can arrive without an instance name (older jobs,
@@ -132,19 +137,25 @@ pub fn summarize(result: &Value) -> Option<Value> {
         if source.instance_name.is_empty() {
             source.instance_name = drop.instance_name.clone();
         }
+        if source.instance_id.is_none() {
+            source.instance_id = drop.instance_id;
+        }
         source.drops.push(idx);
         // Drops without an instance (crafted, world) stay out of that rollup.
         if !drop.instance_name.is_empty() {
-            by_instance
+            let group = by_instance
                 .entry(drop.instance_name.clone())
                 .or_insert_with(|| Group {
                     key: drop.instance_name.clone(),
                     label: drop.instance_name.clone(),
                     instance_name: drop.instance_name.clone(),
+                    instance_id: drop.instance_id,
                     drops: Vec::new(),
-                })
-                .drops
-                .push(idx);
+                });
+            if group.instance_id.is_none() {
+                group.instance_id = drop.instance_id;
+            }
+            group.drops.push(idx);
         }
     }
 
@@ -157,6 +168,9 @@ pub fn summarize(result: &Value) -> Option<Value> {
             row["key"] = json!(m.key);
             row["encounter"] = json!(m.label);
             row["instance_name"] = json!(m.instance_name);
+            if let Some(id) = m.instance_id {
+                row["instance_id"] = json!(id);
+            }
             row["best_item"] = json!({
                 "name": best.name,
                 "item_id": best.item_id,
@@ -172,6 +186,9 @@ pub fn summarize(result: &Value) -> Option<Value> {
         .map(|(i, m)| {
             let mut row = metrics_json(&m, i + 1);
             row["instance_name"] = json!(m.instance_name);
+            if let Some(id) = m.instance_id {
+                row["instance_id"] = json!(id);
+            }
             row
         })
         .collect();
@@ -200,6 +217,7 @@ fn rank(groups: Vec<Group>, drops: &[Drop], base_dps: f64) -> Vec<Metrics> {
                 key: g.key,
                 label: g.label,
                 instance_name: g.instance_name,
+                instance_id: g.instance_id,
                 items,
                 upgrades,
                 expected: round1(total / items as f64),
@@ -423,6 +441,7 @@ mod tests {
         let nameless = item(1, 1, "Boss A");
         let mut named = item(2, 1, "Boss A");
         named["instance_name"] = json!("Sporefall");
+        named["instance_id"] = json!(1302);
 
         let summary = summarize(&result(vec![
             row("Combo 2", 300.0, vec![nameless]),
@@ -431,6 +450,30 @@ mod tests {
         .expect("summary");
 
         assert_eq!(source(&summary, "Boss A")["instance_name"], "Sporefall");
+        // Same "first non-null wins" rule for the id the UI localizes by.
+        assert_eq!(source(&summary, "Boss A")["instance_id"], 1302);
+    }
+
+    // Older jobs' drops carry no instance_id, and neither do crafted/world
+    // drops — the row must omit the key rather than ship a null the frontend
+    // would have to special-case.
+    #[test]
+    fn source_omits_instance_id_when_no_drop_has_one() {
+        let mut named = item(1, 1, "Boss A");
+        named["instance_name"] = json!("Sporefall");
+
+        let summary =
+            summarize(&result(vec![row("Combo 2", 300.0, vec![named])])).expect("summary");
+
+        let row = source(&summary, "Boss A");
+        assert_eq!(row["instance_name"], "Sporefall");
+        assert!(
+            row.as_object()
+                .expect("source row")
+                .get("instance_id")
+                .is_none(),
+            "absent instance_id must be omitted, not null: {row:?}"
+        );
     }
 
     // Bosses roll up into the instance they belong to; drops without an
@@ -441,6 +484,7 @@ mod tests {
         a["instance_name"] = json!("Sporefall");
         let mut b = item(2, 2, "Boss B");
         b["instance_name"] = json!("Sporefall");
+        b["instance_id"] = json!(1302);
         let homeless = item(3, 3, "World Boss");
 
         let summary = summarize(&result(vec![
@@ -453,6 +497,8 @@ mod tests {
         let instances = summary["instances"].as_array().expect("instances array");
         assert_eq!(instances.len(), 1);
         assert_eq!(instances[0]["instance_name"], "Sporefall");
+        // The rollup takes the id from whichever drop of the instance has one.
+        assert_eq!(instances[0]["instance_id"], 1302);
         assert_eq!(instances[0]["items"], 2);
         assert_eq!(instances[0]["expected"], 200.0);
         assert_eq!(instances[0]["best"], 300.0);
