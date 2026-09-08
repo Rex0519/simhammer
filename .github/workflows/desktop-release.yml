@@ -13,6 +13,9 @@ on:
       - main
     tags:
       - "v*"
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
 
 concurrency:
   group: desktop-release-${{ github.ref }}
