@@ -95,10 +95,16 @@ static CRAFTING_REAGENTS: OnceCell<HashMap<u64, Value>> = OnceCell::new();
 static EMBELLISHMENTS: OnceCell<Vec<EmbellishmentInfo>> = OnceCell::new();
 
 /// One locale's game names beyond items: everything the UI renders that
-/// Raidbots' `item-names.json` does not cover. `spells` stays out of the API
-/// response (it is 400k entries; the on-demand endpoint reads it instead).
-#[derive(Debug, Default, serde::Serialize)]
+/// Raidbots' `item-names.json` does not cover. Deserialized straight off the
+/// file — going through `serde_json::Value` first built an intermediate tree of
+/// the whole bundle and then cloned every string out of it. `items` and
+/// `spells` stay out of the API response: `items` is merged into `ITEM_NAMES`
+/// at load, `spells` is read in-process by the on-demand localize endpoint.
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct LocalizedNames {
+    #[serde(skip_serializing)]
+    pub items: HashMap<u64, String>,
     #[serde(skip_serializing)]
     pub spells: HashMap<u64, String>,
     pub enchants: HashMap<u64, String>,
@@ -788,9 +794,9 @@ pub fn load(data_dir: &Path) -> Result<(), String> {
     for path in localized_paths {
         let locale = localized_names_locale(&path).expect("filtered above");
         let file = fs::File::open(&path).map_err(|e| format!("open {}: {}", path.display(), e))?;
-        let raw: Value = serde_json::from_reader(std::io::BufReader::new(file))
+        let mut names: LocalizedNames = serde_json::from_reader(std::io::BufReader::new(file))
             .map_err(|e| format!("parse {}: {}", path.display(), e))?;
-        let (items, names) = parse_localized_names(&raw);
+        let items = std::mem::take(&mut names.items);
         println!(
             "Loaded {} {} item names and {} spell names from {}",
             items.len(),
@@ -885,36 +891,6 @@ fn localized_names_locale(path: &Path) -> Option<String> {
     } else {
         None
     }
-}
-
-/// Id → name map for one top-level key of a localized-names bundle.
-fn id_name_map(raw: &Value, key: &str) -> HashMap<u64, String> {
-    raw.get(key)
-        .and_then(|v| v.as_object())
-        .map(|obj| {
-            obj.iter()
-                .filter_map(|(id, name)| Some((id.parse().ok()?, name.as_str()?.to_string())))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-/// Splits a localized-names bundle into its item names and everything else.
-/// Pure so the parse and merge are testable without the real 17 MB file.
-fn parse_localized_names(raw: &Value) -> (HashMap<u64, String>, LocalizedNames) {
-    let names = LocalizedNames {
-        spells: id_name_map(raw, "spells"),
-        enchants: id_name_map(raw, "enchants"),
-        instances: id_name_map(raw, "instances"),
-        encounters: id_name_map(raw, "encounters"),
-        currencies: id_name_map(raw, "currencies"),
-        name_descriptions: id_name_map(raw, "nameDescriptions"),
-        maps: id_name_map(raw, "maps"),
-        classes: id_name_map(raw, "classes"),
-        specs: id_name_map(raw, "specs"),
-        difficulties: id_name_map(raw, "difficulties"),
-    };
-    (id_name_map(raw, "items"), names)
 }
 
 /// Layers one locale's item names onto the Raidbots map; the file wins.
@@ -2791,12 +2767,15 @@ mod tests {
     }
 
     // Guards the localized-names bundle parse: every contract section lands in
-    // its own map, `nameDescriptions` keeps its camelCase key, and a section the
-    // file omits is an empty map rather than a panic.
+    // its own map, `nameDescriptions` keeps its camelCase key, the metadata keys
+    // the file carries are ignored, and a section the file omits is an empty map
+    // rather than a panic.
     #[test]
     fn parses_localized_names_bundle_sections() {
-        let raw = serde_json::json!({
+        let raw = r#"{
             "locale": "zh_CN",
+            "source": "wago.tools",
+            "fetched_at": "2026-09-08T00:00:00.000Z",
             "items": {"271465": "祝圣烈焰战盔"},
             "spells": {"1822": "斜掠"},
             "enchants": {"7397": "附魔"},
@@ -2806,10 +2785,13 @@ mod tests {
             "nameDescriptions": {"13567": "描述"},
             "maps": {"2649": "地图"},
             "classes": {"2": "圣骑士"},
-            "specs": {"70": "惩戒"},
-        });
-        let (items, names) = parse_localized_names(&raw);
-        assert_eq!(items.get(&271465).map(String::as_str), Some("祝圣烈焰战盔"));
+            "specs": {"70": "惩戒"}
+        }"#;
+        let names: LocalizedNames = serde_json::from_str(raw).unwrap();
+        assert_eq!(
+            names.items.get(&271465).map(String::as_str),
+            Some("祝圣烈焰战盔")
+        );
         assert_eq!(names.spells.get(&1822).map(String::as_str), Some("斜掠"));
         assert_eq!(names.enchants.get(&7397).map(String::as_str), Some("附魔"));
         assert_eq!(
@@ -2888,17 +2870,18 @@ mod tests {
     }
 
     // Guards the serialized bundle shape the frontend consumes: the small
-    // tables ship (incl. camelCase `nameDescriptions`), the 400k-entry spell
-    // map does not.
+    // tables ship (incl. camelCase `nameDescriptions`); the spell map and the
+    // item names (merged into ITEM_NAMES at load) do not.
     #[test]
     fn serialized_bundle_omits_spells_and_keeps_camel_case() {
-        let (_, names) = parse_localized_names(&serde_json::json!({
-            "spells": {"1822": "斜掠"},
-            "nameDescriptions": {"13567": "描述"},
-            "instances": {"1030": "塞塔里斯神庙"},
-        }));
+        let names: LocalizedNames = serde_json::from_str(
+            r#"{"items":{"1":"物品"},"spells":{"1822":"斜掠"},
+                "nameDescriptions":{"13567":"描述"},"instances":{"1030":"塞塔里斯神庙"}}"#,
+        )
+        .unwrap();
         let value = serde_json::to_value(&names).unwrap();
         assert!(value.get("spells").is_none(), "spells must not be served");
+        assert!(value.get("items").is_none(), "items must not be served");
         assert_eq!(value["nameDescriptions"]["13567"], "描述");
         assert_eq!(value["instances"]["1030"], "塞塔里斯神庙");
         assert!(value.get("difficulties").is_some());
