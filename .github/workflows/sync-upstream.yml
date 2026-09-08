@@ -1,0 +1,47 @@
+name: Sync upstream
+
+# Mirrors sortbek/simcraft master into this fork's master branch and keeps a
+# pull request open from master into main so upstream changes can be merged
+# (and conflicts resolved) deliberately. Merging is never automatic.
+
+on:
+  schedule:
+    - cron: "17 3 * * 1" # Mondays 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: master
+
+      - name: Fetch upstream master
+        run: |
+          git remote add upstream https://github.com/sortbek/simcraft.git
+          git fetch upstream master
+
+      - name: Update mirror branch
+        id: mirror
+        run: |
+          BEFORE=$(git rev-parse HEAD)
+          git push origin refs/remotes/upstream/master:refs/heads/master
+          AFTER=$(git rev-parse upstream/master)
+          echo "changed=$([ "$BEFORE" != "$AFTER" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Open or refresh the sync pull request
+        if: steps.mirror.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh pr list --base main --head master --state open --json number --jq 'length' | grep -q '^0$'; then
+            gh pr create --base main --head master \
+              --title "Sync upstream master into main" \
+              --body "Automated mirror of sortbek/simcraft master. Review, resolve conflicts if any, and merge to pull upstream changes into the fork."
+          fi
