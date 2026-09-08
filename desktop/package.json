@@ -24,7 +24,7 @@
   },
   "build": {
     "appId": "com.simhammer.app",
-    "productName": "SimHammer",
+    "productName": "Magic World Sim",
     "files": [
       "main.js",
       "preload.js",
@@ -48,7 +48,7 @@
     "win": {
       "target": "nsis",
       "icon": "build/icon.png",
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "MagicWorldSim-Setup-${version}.${ext}"
     },
     "mac": {
       "target": "dmg",
@@ -57,13 +57,15 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": false
+      "notarize": false,
+      "artifactName": "MagicWorldSim-${version}-${arch}.${ext}"
     },
     "linux": {
       "target": [
         "AppImage",
         "deb"
-      ]
+      ],
+      "artifactName": "MagicWorldSim-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,

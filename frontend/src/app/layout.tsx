@@ -11,7 +11,7 @@ import './globals.css';
 import packageJson from '../../package.json';
 
 export const metadata: Metadata = {
-  title: 'SimHammer',
+  title: 'Magic World Sim',
   description: 'Run SimulationCraft simulations from your browser',
 };
 

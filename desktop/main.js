@@ -73,7 +73,7 @@ app.whenReady().then(async () => {
   } catch (err) {
     console.error(err.message);
     dialog.showErrorBox(
-      "SimHammer",
+      "Magic World Sim",
       `The backend failed to start.\n\n${err.message}\n\nIf this keeps happening, restart your computer or report the issue on GitHub.`
     );
     app.quit();
