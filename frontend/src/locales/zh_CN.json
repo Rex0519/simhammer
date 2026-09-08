@@ -278,6 +278,7 @@
   "results.error": "误差（Δ）",
   "results.fightLength": "战斗时长",
   "results.targets": "目标数",
+  "results.targetsPatchwerk": "1（木桩）",
   "results.iterations": "迭代次数",
   "results.smartSim": "智能模拟",
   "results.elapsed": "用时",

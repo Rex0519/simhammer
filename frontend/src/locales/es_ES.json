@@ -217,6 +217,7 @@
   "results.error": "Error (Δ)",
   "results.fightLength": "Duración del combate",
   "results.targets": "Objetivos",
+  "results.targetsPatchwerk": "1 (Patchwerk)",
   "results.iterations": "Iteraciones",
   "results.smartSim": "Sim inteligente",
   "results.elapsed": "Transcurrido",

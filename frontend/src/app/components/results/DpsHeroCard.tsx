@@ -2,6 +2,7 @@
 
 import { API_URL } from '../../lib/api';
 import { useLanguage } from '../../lib/i18n';
+import { localizedSpecClassDisplayName, useLocalizedNames } from '../../lib/localizedNames';
 import HeroMetaStat from './HeroMetaStat';
 import {
   FACTION_BGS,
@@ -43,7 +44,8 @@ export default function DpsHeroCard({
   children,
   topAction,
 }: DpsHeroCardProps) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
   const dpsDelta = baseDps != null && baseDps > 0 ? dps - baseDps : null;
   const dpsDeltaPct = baseDps != null && baseDps > 0 ? ((dps - baseDps) / baseDps) * 100 : null;
 
@@ -114,7 +116,7 @@ export default function DpsHeroCard({
             </h1>
           </div>
           <p className="mb-6 font-headline text-sm uppercase tracking-widest text-on-surface-variant">
-            {playerClass}
+            {localizedSpecClassDisplayName(playerClass, locale)}
           </p>
           <div className="space-y-1">
             <div className="flex items-baseline gap-2 font-headline text-7xl font-black tabular-nums tracking-tighter text-primary md:text-8xl">
@@ -155,7 +157,9 @@ export default function DpsHeroCard({
             <HeroMetaStat
               label={t('results.targets')}
               value={
-                desiredTargets === 1 ? '1 (Patchwerk)' : `${desiredTargets} ${t('results.targets')}`
+                desiredTargets === 1
+                  ? t('results.targetsPatchwerk')
+                  : `${desiredTargets} ${t('results.targets')}`
               }
               border
             />

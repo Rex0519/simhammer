@@ -217,6 +217,7 @@
   "results.error": "Ошибка (Δ)",
   "results.fightLength": "Длительность боя",
   "results.targets": "Цели",
+  "results.targetsPatchwerk": "1 (Patchwerk)",
   "results.iterations": "Итерации",
   "results.smartSim": "Умная симуляция",
   "results.elapsed": "Прошло",

@@ -217,6 +217,7 @@
   "results.error": "Errore (Δ)",
   "results.fightLength": "Durata combattimento",
   "results.targets": "Bersagli",
+  "results.targetsPatchwerk": "1 (Patchwerk)",
   "results.iterations": "Iterazioni",
   "results.smartSim": "Sim Intelligente",
   "results.elapsed": "Tempo trascorso",

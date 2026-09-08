@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { apiUrl } from './api';
 import { useLanguage } from './i18n';
-import { CLASS_NAME_TO_ID, SPEC_NAME_TO_ID, specDisplayName } from './types';
+import { CLASS_NAME_TO_ID, CLASS_SPECS, SPEC_NAME_TO_ID, specDisplayName } from './types';
 
 /** Locales the backend ships a `/api/localized-names/{locale}` bundle for.
  *  Anything else renders the English fallback and never issues a request. */
@@ -256,4 +256,29 @@ export function localizedSpecClassName(
   if (!classSimcName) return spec;
   if (!specSimcName) return cls;
   return `${spec} ${cls}`;
+}
+
+/** SimC class names to try when parsing a combined "Spec Class" display string.
+ *  Skips the legacy no-underscore aliases in `CLASS_SPECS` (`deathknight`,
+ *  `demonhunter`) since `specDisplayName` only round-trips the underscored form. */
+const DISPLAY_PARSE_CLASS_NAMES = Object.keys(CLASS_SPECS).filter(
+  (name) => name !== 'deathknight' && name !== 'demonhunter'
+);
+
+/** Localize a combined "Spec Class" display string as produced by simc's
+ *  `specialization` field (e.g. "Retribution Paladin" → "惩戒 圣骑士"). Parses the
+ *  string back into simc names by matching it against every known spec/class
+ *  pair, then delegates to `localizedSpecClassName`. Falls back to the input
+ *  unchanged when no pair matches (e.g. an unrecognized or malformed string). */
+export function localizedSpecClassDisplayName(displayName: string, locale: string): string {
+  if (!displayName) return displayName;
+  for (const classSimcName of DISPLAY_PARSE_CLASS_NAMES) {
+    for (const specSimcName of CLASS_SPECS[classSimcName]) {
+      const candidate = `${specDisplayName(specSimcName)} ${specDisplayName(classSimcName)}`;
+      if (candidate.toLowerCase() === displayName.toLowerCase()) {
+        return localizedSpecClassName(specSimcName, classSimcName, locale);
+      }
+    }
+  }
+  return displayName;
 }
