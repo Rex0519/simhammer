@@ -395,10 +395,16 @@ pub fn get_instance_drops(
                     .map(|arr| arr.iter().filter_map(|v| v.as_u64()).collect())
                     .unwrap_or_default();
 
-                let item_instance = if is_meta {
-                    encounter_to_instance.get(eid).cloned().unwrap_or_default()
+                // Meta-instances (season pools) list instance ids as their
+                // "encounters", so for them the encounter id IS the journal
+                // instance id the localized-name bundle is keyed by.
+                let (item_instance, item_instance_id) = if is_meta {
+                    match encounter_to_instance.get(eid) {
+                        Some(name) => (name.clone(), *eid),
+                        None => (String::new(), 0),
+                    }
                 } else {
-                    instance_name.clone()
+                    (instance_name.clone(), instance_id)
                 };
 
                 let mut item_json = serde_json::json!({
@@ -412,6 +418,11 @@ pub fn get_instance_drops(
                     "encounter_id": *eid,
                     "instance_name": item_instance,
                 });
+                // Omitted rather than stamped 0 when unknown, so downstream
+                // "first non-null" lookups stay meaningful.
+                if item_instance_id > 0 {
+                    item_json["instance_id"] = serde_json::json!(item_instance_id);
+                }
                 if !item_specs.is_empty() {
                     item_json["specs"] = serde_json::json!(item_specs);
                 }
@@ -762,6 +773,34 @@ mod season_filter_tests {
             vec![1317, 1320],
             "expected The Tidebound Grotto + The Venomous Abyss"
         );
+    }
+
+    /// The Drop Finder localizes dungeon/raid labels by journal instance id, so
+    /// every drop has to name the instance it actually came from — inside a
+    /// season pool too, whose "encounters" are themselves instance ids.
+    #[test]
+    fn drops_carry_the_journal_instance_id() {
+        ensure_game_data_loaded();
+        let drops = get_instance_drops(1320, None, None, true).expect("Venomous Abyss drops");
+        let mut checked = 0;
+        for item in drops.values().filter_map(|v| v.as_array()).flatten() {
+            assert_eq!(item["instance_id"], serde_json::json!(1320), "{item}");
+            checked += 1;
+        }
+        assert!(checked > 0, "no raid drops to check");
+
+        // Meta-instance: -1 is the M+ pool, so each drop reports its own dungeon.
+        let pool = get_instance_drops(-1, None, None, true).expect("M+ pool drops");
+        let mut checked = 0;
+        for item in pool.values().filter_map(|v| v.as_array()).flatten() {
+            let id = item
+                .get("instance_id")
+                .and_then(|v| v.as_i64())
+                .unwrap_or_else(|| panic!("pool drop without an instance_id: {item}"));
+            assert!(id > 0, "the pool's own negative id must not leak: {item}");
+            checked += 1;
+        }
+        assert!(checked > 0, "no pool drops to check");
     }
 
     #[test]

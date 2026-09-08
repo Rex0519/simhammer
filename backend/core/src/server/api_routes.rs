@@ -143,6 +143,10 @@ pub(super) fn configure(cfg: &mut web::ServiceConfig) {
             web::post().to(localized_names_handlers::localize_names),
         )
         .route(
+            "/api/localized-names/{locale}",
+            web::get().to(localized_names_handlers::get_localized_names),
+        )
+        .route(
             "/api/item-info/{id}",
             web::get().to(game_data_handlers::get_item_info),
         )

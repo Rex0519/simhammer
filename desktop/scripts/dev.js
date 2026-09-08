@@ -1,4 +1,4 @@
-const { spawn, execSync } = require("child_process");
+const { spawn, execSync, execFileSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
@@ -81,6 +81,25 @@ function download(url) {
       res.on("error", reject);
     }).on("error", reject);
   });
+}
+
+/**
+ * Localized game names from wago.tools (everything Raidbots does not ship a
+ * zh_CN name for: spells, journal instances/encounters, currencies, ...).
+ * Needs talents.json + enchantments.json in dataDir, so it runs after the
+ * Raidbots fetch. Non-fatal: a wago outage must not block `npm run dev`.
+ */
+function fetchLocalizedNames(dataDir) {
+  try {
+    console.log("[dev] Fetching zh_CN localized game names...");
+    execFileSync(
+      process.execPath,
+      [path.join(BACKEND_DIR, "scripts", "fetch-localized-names.mjs"), "zh_CN", dataDir],
+      { stdio: "inherit", timeout: 10 * 60 * 1000 }
+    );
+  } catch {
+    console.log("[dev] Localized name fetch failed; zh_CN game names fall back to English.");
+  }
 }
 
 async function fetchGameData(dataDir) {
@@ -184,6 +203,12 @@ async function ensureResources() {
   if (!fs.existsSync(metadataFile)) {
     console.log("[dev] Game data missing — downloading from Raidbots...");
     await fetchGameData(dataDir);
+  }
+
+  // Gated on its own file, not on metadata.json: a data dir that predates this
+  // feature (or a run where wago was down) would otherwise never get a bundle.
+  if (!fs.existsSync(path.join(dataDir, "localized-names.zh_CN.json"))) {
+    fetchLocalizedNames(dataDir);
   }
 
   // season-config.json is hand-maintained in core/ but the backend reads it from

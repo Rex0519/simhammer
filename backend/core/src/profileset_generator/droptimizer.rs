@@ -154,6 +154,7 @@ pub(super) fn generate_droptimizer_input(
         // drops API; the source summary groups by them.
         let encounter_id = item.get("encounter_id").cloned().filter(|v| !v.is_null());
         let instance_name = item.get("instance_name").cloned().filter(|v| !v.is_null());
+        let instance_id = item.get("instance_id").cloned().filter(|v| !v.is_null());
         // `slot_inherits` is intentionally ignored (kept in the type for API
         // back-compat, no longer authoritative).
         let mut slots = class_data::inv_type_to_slots(inv_type, &spec);
@@ -320,6 +321,9 @@ pub(super) fn generate_droptimizer_input(
             }
             if let Some(instance) = instance_name.clone() {
                 meta["instance_name"] = instance;
+            }
+            if let Some(id) = instance_id.clone() {
+                meta["instance_id"] = id;
             }
             combo_metadata.insert(combo_name.clone(), json!([meta]));
             combo_idx += 1;
@@ -1178,8 +1182,9 @@ finger2=,id=102,gem_id=2222\n"; // 2222 is most-used (x2)
         assert_eq!(combo[0]["encounter"], "Specific Boss Name");
     }
 
-    // Guards the drop-source summary: it groups by encounter_id and rolls up by
-    // instance_name, so both have to survive the combo metadata stamp.
+    // Guards the drop-source summary: it groups by encounter_id, rolls up by
+    // instance_name and localizes by instance_id, so all three have to survive
+    // the combo metadata stamp.
     #[test]
     fn drop_metadata_carries_encounter_id_and_instance_name() {
         let profile = "mage=test\nspec=frost\nhead=,id=100\n";
@@ -1190,6 +1195,7 @@ finger2=,id=102,gem_id=2222\n"; // 2222 is most-used (x2)
             "encounter": "Specific Boss Name",
             "encounter_id": 2611,
             "instance_name": "Sporefall",
+            "instance_id": 1302,
             "inventory_type": 1,
             "bonus_ids": []
         })];
@@ -1197,6 +1203,7 @@ finger2=,id=102,gem_id=2222\n"; // 2222 is most-used (x2)
         let combo = metadata.get("Combo 2").expect("missing combo");
         assert_eq!(combo[0]["encounter_id"], 2611);
         assert_eq!(combo[0]["instance_name"], "Sporefall");
+        assert_eq!(combo[0]["instance_id"], 1302);
     }
 
     // Guards the metadata payload: a drop that carries neither field must not
@@ -1217,7 +1224,9 @@ finger2=,id=102,gem_id=2222\n"; // 2222 is most-used (x2)
         let combo = metadata.get("Combo 2").expect("missing combo");
         let row = combo[0].as_object().expect("combo row is an object");
         assert!(
-            !row.contains_key("encounter_id") && !row.contains_key("instance_name"),
+            !row.contains_key("encounter_id")
+                && !row.contains_key("instance_name")
+                && !row.contains_key("instance_id"),
             "absent source fields must be omitted, not stamped null: {row:?}"
         );
     }

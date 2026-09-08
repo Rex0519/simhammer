@@ -244,6 +244,12 @@ echo "==> Fetching Blizzard data..."
 curl -sL -o "$DATA_FULL_DIR/blizzard-season.json" https://simhammer.com/api/blizzard/season || true
 curl -sL -o "$DATA_FULL_DIR/blizzard-instances.json" https://simhammer.com/api/blizzard/instances || true
 
+# zh_CN names for everything Raidbots does not localize. Non-fatal: a wago.tools
+# outage must not stop the container from starting.
+echo "==> Fetching localized game names..."
+node /app/fetch-localized-names.mjs zh_CN "$DATA_FULL_DIR" \
+    || echo "    WARNING: localized name fetch failed; zh_CN game names fall back to English."
+
 echo "==> Compacting game data..."
 node /app/compact-data.js "$DATA_FULL_DIR" "$DATA_DIR"
 

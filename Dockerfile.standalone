@@ -47,6 +47,7 @@ COPY --from=backend-builder /build/target/release/simhammer-server /usr/local/bi
 
 # Bake in the data compaction script and the default season config
 COPY backend/scripts/compact-data.js /app/compact-data.js
+COPY backend/scripts/fetch-localized-names.mjs /app/fetch-localized-names.mjs
 COPY backend/core/season-config.json /app/default_season_config.json
 
 # Bake in the offline-generated MDT route data (enemy DB + map tiles). It isn't
