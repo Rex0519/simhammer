@@ -115,7 +115,7 @@ export default function Sidebar() {
       <div className="desktop-drag shrink-0 px-6 pb-8 pt-6">
         <div className="desktop-no-drag flex items-center gap-2">
           <span className="font-headline text-xl font-black uppercase tracking-tighter text-primary">
-            SimHammer
+            {t('layout.simhammer')}
           </span>
         </div>
       </div>
