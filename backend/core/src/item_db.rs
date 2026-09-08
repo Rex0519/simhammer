@@ -1411,7 +1411,15 @@ pub fn get_enchant_info(enchant_id: u64) -> Option<Value> {
         .and_then(|n| n.as_str())
         .unwrap_or("");
     let item_id = enchant.get("itemId").and_then(|v| v.as_u64()).unwrap_or(0);
-    Some(serde_json::json!({ "enchant_id": enchant_id, "name": name, "item_id": item_id }))
+    // spellId is the only handle for enchants with no backing item — the
+    // zh_CN name lookup falls back to the spell tooltip for those.
+    let spell_id = enchant.get("spellId").and_then(|v| v.as_u64()).unwrap_or(0);
+    Some(serde_json::json!({
+        "enchant_id": enchant_id,
+        "name": name,
+        "item_id": item_id,
+        "spell_id": spell_id
+    }))
 }
 
 pub fn get_gem_info(gem_item_id: u64) -> Option<Value> {

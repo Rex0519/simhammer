@@ -8,6 +8,7 @@ use super::cloud_estimate;
 use super::droptimizer_handlers;
 use super::game_data_handlers;
 use super::job_handlers;
+use super::localized_names_handlers;
 use super::mdt_handlers;
 #[cfg(feature = "desktop")]
 use super::profile_handlers;
@@ -136,6 +137,10 @@ pub(super) fn configure(cfg: &mut web::ServiceConfig) {
         .route(
             "/api/item-names",
             web::get().to(game_data_handlers::get_item_names),
+        )
+        .route(
+            "/api/item-names/localize",
+            web::post().to(localized_names_handlers::localize_names),
         )
         .route(
             "/api/item-info/{id}",

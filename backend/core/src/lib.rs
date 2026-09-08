@@ -8,6 +8,7 @@ pub mod gear_resolver;
 pub mod item_db;
 pub mod item_search;
 pub mod jobs;
+pub mod localized_names;
 pub mod log_buffer;
 pub mod mdt;
 pub mod models;

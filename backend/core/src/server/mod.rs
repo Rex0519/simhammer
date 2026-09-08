@@ -11,6 +11,7 @@ mod game_data_handlers;
 mod handler_prep;
 mod job_handlers;
 pub(crate) mod job_spawn;
+mod localized_names_handlers;
 mod mdt_handlers;
 #[cfg(feature = "desktop")]
 mod profile_handlers;
@@ -39,7 +40,8 @@ use crate::compute::SimcBinaries;
 #[cfg(feature = "desktop")]
 use crate::db::SimProfileRepo;
 use crate::db::{
-    CharacterRepo, Database, JobRepo, RosterRepo, RosterRunRepo, RouteRepo, SettingsRepo,
+    CharacterRepo, Database, JobRepo, LocalizedNamesRepo, RosterRepo, RosterRunRepo, RouteRepo,
+    SettingsRepo,
 };
 use crate::log_buffer::LogBuffer;
 use types::FrontendDir;
@@ -86,6 +88,7 @@ pub async fn start_server(
         roster_run_repo,
         settings_repo,
         profile_repo,
+        localized_names_repo,
     ) = match Database::connect(database_url).await {
         Ok(db) => (
             web::Data::new(JobRepo::new(db.pool.clone())),
@@ -95,6 +98,7 @@ pub async fn start_server(
             web::Data::new(RosterRunRepo::new(db.pool.clone())),
             web::Data::new(SettingsRepo::new(db.pool.clone())),
             web::Data::new(SimProfileRepo::new(db.pool.clone())),
+            web::Data::new(LocalizedNamesRepo::new(db.pool.clone())),
         ),
         Err(err) => {
             eprintln!(
@@ -109,11 +113,20 @@ pub async fn start_server(
                 web::Data::new(RosterRunRepo::new_memory()),
                 web::Data::new(SettingsRepo::new_memory()),
                 web::Data::new(SimProfileRepo::new_memory()),
+                web::Data::new(LocalizedNamesRepo::new_memory()),
             )
         }
     };
     #[cfg(not(feature = "desktop"))]
-    let (job_repo, route_repo, char_repo, roster_repo, roster_run_repo, settings_repo) = {
+    let (
+        job_repo,
+        route_repo,
+        char_repo,
+        roster_repo,
+        roster_run_repo,
+        settings_repo,
+        localized_names_repo,
+    ) = {
         let db = Database::connect(database_url)
             .await
             .expect("Failed to connect to database");
@@ -124,6 +137,7 @@ pub async fn start_server(
             web::Data::new(RosterRepo::new(db.pool.clone())),
             web::Data::new(RosterRunRepo::new(db.pool.clone())),
             web::Data::new(SettingsRepo::new(db.pool.clone())),
+            web::Data::new(LocalizedNamesRepo::new(db.pool.clone())),
         )
     };
 
@@ -218,6 +232,7 @@ pub async fn start_server(
             .app_data(roster_repo.clone())
             .app_data(roster_run_repo.clone())
             .app_data(settings_repo.clone())
+            .app_data(localized_names_repo.clone())
             .app_data(provider_registry.clone())
             .app_data(local_queue_data.clone())
             .configure(api_routes::configure);

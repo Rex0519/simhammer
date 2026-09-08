@@ -2,18 +2,25 @@ use actix_web::{web, HttpResponse};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
+use super::localized_names_handlers::MergedItemNames;
 use super::types::*;
 use crate::addon_parser;
+use crate::db::LocalizedNamesRepo;
 use crate::game_data;
 use crate::gear_resolver;
 use crate::item_db;
 
-pub(super) async fn get_item_names() -> HttpResponse {
+pub(super) async fn get_item_names(repo: web::Data<LocalizedNamesRepo>) -> HttpResponse {
+    // One query; empty for every locale item-names.json already covers.
+    let overrides = repo.all_by_kind("item").await.unwrap_or_default();
     match item_db::item_names() {
         Some(names) => HttpResponse::Ok()
             .insert_header(("Cache-Control", "public, max-age=3600"))
-            .json(names),
-        None => HttpResponse::Ok().json(json!({})),
+            .json(MergedItemNames {
+                base: names,
+                overrides,
+            }),
+        None => HttpResponse::Ok().json(overrides),
     }
 }
 
