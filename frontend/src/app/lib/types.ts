@@ -214,6 +214,75 @@ export const SLOT_LABELS: Record<string, string> = {
   off_hand: 'Off Hand',
 };
 
+/** Locale key per gear slot. Keyed by both the SimC slot id (`main_hand`) and
+ *  the display slot name the drop payloads group by (`Main Hand`), so one
+ *  lookup serves the gear screens and the Drop Finder. */
+export const SLOT_LABEL_KEYS: Record<string, string> = {
+  head: 'slot.head',
+  neck: 'slot.neck',
+  shoulder: 'slot.shoulder',
+  back: 'slot.back',
+  chest: 'slot.chest',
+  wrist: 'slot.wrist',
+  hands: 'slot.hands',
+  waist: 'slot.waist',
+  legs: 'slot.legs',
+  feet: 'slot.feet',
+  finger1: 'slot.ring1',
+  finger2: 'slot.ring2',
+  trinket1: 'slot.trinket1',
+  trinket2: 'slot.trinket2',
+  main_hand: 'slot.mainHand',
+  off_hand: 'slot.offHand',
+  Head: 'slot.head',
+  Neck: 'slot.neck',
+  Shoulder: 'slot.shoulder',
+  Back: 'slot.back',
+  Chest: 'slot.chest',
+  Wrist: 'slot.wrist',
+  Hands: 'slot.hands',
+  Waist: 'slot.waist',
+  Legs: 'slot.legs',
+  Feet: 'slot.feet',
+  Finger: 'slot.rings',
+  Trinket: 'slot.trinkets',
+  'Main Hand': 'slot.mainHand',
+  'Off Hand': 'slot.offHand',
+  'One-Hand': 'slot.oneHand',
+  'Two-Hand': 'slot.twoHand',
+  Ranged: 'slot.ranged',
+  Held: 'slot.held',
+};
+
+/** Translated slot label; unknown slots keep the English `SLOT_LABELS` value. */
+export function slotLabel(slot: string, t: (key: string) => string): string {
+  const key = SLOT_LABEL_KEYS[slot];
+  return key ? t(key) : (SLOT_LABELS[slot] ?? slot);
+}
+
+/** Locale key per English difficulty word. Covers the season-config difficulty
+ *  labels and the difficulty tag Blizzard stamps on raid items. */
+const DIFFICULTY_LABEL_KEYS: Record<string, string> = {
+  LFR: 'difficulty.lfr',
+  'Raid Finder': 'difficulty.raidFinder',
+  Normal: 'difficulty.normal',
+  Heroic: 'difficulty.heroic',
+  Mythic: 'difficulty.mythic',
+  'Mythic 0': 'difficulty.mythicZero',
+  'Mythic+': 'difficulty.mythicPlus',
+};
+
+/** Translated difficulty label. Labels we ship no key for (crest names, "+7",
+ *  PvP rank names) come back unchanged; "Mythic 5" keeps its number. */
+export function difficultyLabel(label: string, t: (key: string) => string): string {
+  if (!label) return label;
+  const exact = DIFFICULTY_LABEL_KEYS[label];
+  if (exact) return t(exact);
+  const parts = label.match(/^(\S+)( \d+)$/);
+  const wordKey = parts ? DIFFICULTY_LABEL_KEYS[parts[1]] : undefined;
+  return parts && wordKey ? `${t(wordKey)}${parts[2]}` : label;
+}
+
 // ---- Class / Spec Data ----
 
 /** All specs for each class (SimC names). Matches backend CLASSES array. */

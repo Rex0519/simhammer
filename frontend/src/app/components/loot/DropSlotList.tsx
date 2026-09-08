@@ -8,6 +8,7 @@ import {
   localizedInstanceName,
   useLocalizedNames,
 } from '../../lib/localizedNames';
+import { slotLabel } from '../../lib/types';
 import type { DropItem, UpgradeTracks } from './types';
 import { dropUid, dropWowheadAttr, getTrackInfo, resolveUpgrade, QUALITY_COLORS } from './types';
 import VariantBadges from './VariantBadges';
@@ -150,7 +151,7 @@ export default function DropSlotList({
           <h3 className="mb-3 font-headline text-[13px] font-semibold uppercase tracking-wider text-on-surface-variant/60">
             {groupMode === 'instance'
               ? localizedInstanceName(items[0]?.instance_id, groupLabel, locale)
-              : groupLabel}
+              : slotLabel(groupLabel, t)}
             <span className="ml-1.5 font-normal normal-case tracking-normal text-on-surface-variant/40">
               ({items.length})
             </span>

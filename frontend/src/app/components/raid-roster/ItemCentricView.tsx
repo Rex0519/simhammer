@@ -4,7 +4,7 @@ import type { ReportItem, ReportItemResult, ReportPlayer } from '../../lib/roste
 import type { ItemInfo } from '../../lib/useItemInfo';
 import { getWowheadUrl, getWowheadData, iconProps } from '../../lib/useItemInfo';
 import { QUALITY_HEX } from '../../lib/qualityColors';
-import { SLOT_LABELS } from '../../lib/types';
+import { slotLabel } from '../../lib/types';
 import VariantBadges from '../loot/VariantBadges';
 import { useLanguage } from '../../lib/i18n';
 import { localizedEncounterNameByName, useLocalizedNames } from '../../lib/localizedNames';
@@ -54,7 +54,7 @@ function ResultRow({ result, playerName }: { result: ReportItemResult; playerNam
 }
 
 export default function ItemCentricView({ items, players, itemInfo }: Props) {
-  const { locale } = useLanguage();
+  const { t, locale } = useLanguage();
   useLocalizedNames();
   useItemNames();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -160,7 +160,7 @@ export default function ItemCentricView({ items, players, itemInfo }: Props) {
                             <VariantBadges item={item} />
                           </div>
                           <p className="mt-0.5 text-xs text-on-surface-variant/60">
-                            ilvl {item.ilevel} · {SLOT_LABELS[item.slot] ?? item.slot}
+                            {t('loot.ilvl', { ilvl: item.ilevel })} · {slotLabel(item.slot, t)}
                           </p>
                         </div>
                       </div>

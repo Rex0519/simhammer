@@ -13,6 +13,13 @@ import {
   type RosterMember,
 } from '../../lib/rosters';
 import { StatusBadge } from './StatusBadge';
+import { useLanguage } from '../../lib/i18n';
+import { localizedClassName, localizedSpecName, useLocalizedNames } from '../../lib/localizedNames';
+
+/** Blizzard display names ("Beast Mastery") -> the SimC id the helpers key on. */
+function simcKey(displayName: string): string {
+  return displayName.trim().toLowerCase().replace(/\s+/g, '_');
+}
 
 function MemberRow({
   member,
@@ -25,6 +32,8 @@ function MemberRow({
   onMembersChange: (members: RosterMember[]) => void;
   onRemove: (memberId: string) => void;
 }) {
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
   const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [simming, setSimming] = useState(false);
@@ -67,14 +76,19 @@ function MemberRow({
           {member.name}
           {member.item_level > 0 && (
             <span className="ml-1.5 rounded bg-surface-container-high px-1.5 py-0.5 text-[11px] font-semibold text-on-surface-variant">
-              ilvl {member.item_level}
+              {t('loot.ilvl', { ilvl: member.item_level })}
             </span>
           )}
           <span className="text-on-surface-variant/60"> - {member.realm}</span>
         </div>
         {(member.class || member.spec) && (
           <div className="truncate text-[12px] text-on-surface-variant/60">
-            {[member.spec, member.class].filter(Boolean).join(' ')}
+            {[
+              member.spec && localizedSpecName(simcKey(member.spec), locale),
+              member.class && localizedClassName(simcKey(member.class), locale),
+            ]
+              .filter(Boolean)
+              .join(' ')}
           </div>
         )}
       </div>

@@ -21,6 +21,22 @@ const CATEGORY_ICONS: Record<string, string> = {
 
 const DEFAULT_ICON = 'M2 2h12v12H2zM5 5h6M5 8h6M5 11h3';
 
+/** Locale key per season-config category key. Unknown categories (a new season
+ *  adds one before the locale files catch up) fall back to the English label. */
+const CATEGORY_LABEL_KEYS: Record<string, string> = {
+  mplus: 'loot.category.mplus',
+  'normal-dungeons': 'loot.category.dungeons',
+  crafted: 'loot.category.epicProfession',
+  delves: 'loot.category.delves',
+  prey: 'loot.category.prey',
+  'pvp-conquest': 'loot.category.pvpConquest',
+  'pvp-honor': 'loot.category.pvpHonor',
+  'pvp-bloody-tokens': 'loot.category.pvpBloodyTokens',
+  'pvp-profession': 'loot.category.pvpProfession',
+  'rare-profession': 'loot.category.rareProfession',
+  catalyst: 'loot.category.catalyst',
+};
+
 function getIcon(key: string): string {
   if (CATEGORY_ICONS[key]) return CATEGORY_ICONS[key];
   if (key.startsWith('pvp')) return 'M8 1l2 3h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z';
@@ -41,10 +57,15 @@ export default function CategorySelector({
   const { t } = useLanguage();
   const tabs = useMemo(() => {
     const result: CategoryTab[] = [
-      { key: 'raids', label: t('loot.raids'), icon: CATEGORY_ICONS.raids },
+      { key: 'raids', label: t('loot.category.raids'), icon: CATEGORY_ICONS.raids },
     ];
     for (const dc of dungeonCats) {
-      result.push({ key: dc.cat.key, label: dc.cat.label, icon: getIcon(dc.cat.key) });
+      const labelKey = CATEGORY_LABEL_KEYS[dc.cat.key];
+      result.push({
+        key: dc.cat.key,
+        label: labelKey ? t(labelKey) : dc.cat.label,
+        icon: getIcon(dc.cat.key),
+      });
     }
     return result;
   }, [dungeonCats, t]);

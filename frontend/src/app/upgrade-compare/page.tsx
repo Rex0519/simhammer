@@ -8,7 +8,7 @@ import GearItemRow from '../components/gear/GearItemRow';
 import { useSimContext } from '../components/sim-config/SimContext';
 import { API_URL } from '../lib/api';
 import { useComboCount } from '../lib/useComboCount';
-import { SLOT_LABELS } from '../lib/types';
+import { slotLabel } from '../lib/types';
 import { QUALITY_COLORS, useItemInfo, type ItemQuery, iconProps } from '../lib/useItemInfo';
 import { useSimSubmit } from '../lib/useSimSubmit';
 import TalentPicker from '../components/talents/TalentPicker';
@@ -324,7 +324,7 @@ export default function UpgradeComparePage() {
                         )}
                         nameColor={qc}
                         details={[
-                          { text: SLOT_LABELS[c.slot] || c.slot },
+                          { text: slotLabel(c.slot, t) },
                           { text: `${c.ilevel} → ${c.target_ilevel}` },
                           { text: formatCosts(c.costs, currencies), color: 'text-gold/70' },
                         ]}

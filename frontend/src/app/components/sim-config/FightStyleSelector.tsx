@@ -15,6 +15,13 @@ const FIGHT_STYLES = [
   { value: 'HelterSkelter', labelKey: 'fightStyle.helterSkelter' },
 ] as const;
 
+/** Translated fight-style name; unknown values (a run with a raw SimC style)
+ *  render as-is. */
+export function fightStyleLabel(value: string, t: (key: string) => string): string {
+  const match = FIGHT_STYLES.find((fs) => fs.value === value);
+  return match ? t(match.labelKey) : value;
+}
+
 interface FightStyleSelectorProps {
   value: string;
   onChange: (value: string) => void;

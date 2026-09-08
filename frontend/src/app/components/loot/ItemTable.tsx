@@ -6,7 +6,7 @@ import {
   localizedInstanceName,
   useLocalizedNames,
 } from '../../lib/localizedNames';
-import type { CraftedEmbellishment } from '../../lib/types';
+import { slotLabel, type CraftedEmbellishment } from '../../lib/types';
 import type { DropItem, UpgradeTracks } from './types';
 import { dropUid, dropWowheadAttr, getTrackInfo, resolveUpgrade, QUALITY_COLORS } from './types';
 import { resolveInherits, type EquippedGear } from '../../lib/inheritedGear';
@@ -289,7 +289,7 @@ export default function ItemTable({
               <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/40">
                 {groupBy === 'dungeon'
                   ? localizedInstanceName(items[0]?.instance_id, slot, locale)
-                  : slot}{' '}
+                  : slotLabel(slot, t)}{' '}
                 ({items.length})
               </span>
             </div>
@@ -403,7 +403,7 @@ export default function ItemTable({
                     className={`text-center ${hasEmbellishmentColumn ? 'col-span-3' : 'col-span-5'}`}
                   >
                     <span className="rounded bg-surface-container-highest px-2 py-1 text-[10px] font-bold uppercase text-on-surface-variant">
-                      {itemSlotMap.get(item.item_id) ?? slot}
+                      {slotLabel(itemSlotMap.get(item.item_id) ?? slot, t)}
                     </span>
                   </div>
 

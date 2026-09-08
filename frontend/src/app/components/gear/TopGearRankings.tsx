@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { simRow } from '../../lib/api';
-import { SLOT_LABELS } from '../../lib/types';
+import { slotLabel } from '../../lib/types';
 import {
   QUALITY_COLORS,
   getWowheadData,
@@ -213,7 +213,7 @@ export default function TopGearRankings({
                 : 0;
             const groupLabel =
               groupMode === 'slot'
-                ? SLOT_LABELS[groupKey] || groupKey
+                ? slotLabel(groupKey, t)
                 : localizedEncounterNameByName(groupKey, locale);
 
             return (
@@ -637,7 +637,7 @@ function ItemTag({
   );
   const icon = info?.icon || 'inv_misc_questionmark';
   const wowheadData = item.item_id > 0 ? getWowheadData(item) : undefined;
-  const slotName = SLOT_LABELS[item.slot] || item.slot;
+  const slotName = slotLabel(item.slot, t);
 
   return (
     <div
