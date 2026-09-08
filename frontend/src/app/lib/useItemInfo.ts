@@ -3,7 +3,6 @@ import {
   type SetStateAction,
   type SyntheticEvent,
   useEffect,
-  useRef,
   useState,
 } from 'react';
 import { API_URL, apiUrl, fetchJsonOr } from './api';
@@ -145,6 +144,8 @@ export interface EnchantInfo {
   enchant_id: number;
   name: string;
   item_id?: number;
+  /** Backing spell — the only name handle for enchants with no item. */
+  spell_id?: number;
 }
 
 const enchantCache: Record<number, EnchantInfo> = {};
@@ -250,54 +251,155 @@ export function useGemInfo(gemIds: number[]): Record<number, GemInfo> {
   return gems;
 }
 
-// ---- Localized item names (fetched once from /api/item-names) ----
+// ---- Localized item names (bulk from /api/item-names, then on demand) ----
 
-let itemNamesMap: Record<number, Record<string, string>> | null = null;
+// `id -> locale -> name`. Filled from /api/item-names, then extended in place by
+// on-demand lookups; never reassigned so merges can't be clobbered by the bulk
+// fetch resolving late.
+const itemNamesMap: Record<number, Record<string, string>> = {};
+const spellNamesMap: Record<number, Record<string, string>> = {};
+let itemNamesLoaded = false;
 let itemNamesFetching = false;
-const itemNamesListeners: Array<() => void> = [];
+const itemNamesListeners = new Set<() => void>();
+
+function notifyItemNames() {
+  for (const cb of itemNamesListeners) cb();
+}
 
 function ensureItemNames() {
-  if (itemNamesMap || itemNamesFetching) return;
+  if (itemNamesLoaded || itemNamesFetching) return;
   itemNamesFetching = true;
   fetchJsonOr<Record<string, Record<string, string>>>(apiUrl('/api/item-names'), {})
     .then((data) => {
-      // JSON object keys are strings; rekey by number.
-      const map: Record<number, Record<string, string>> = {};
+      // JSON object keys are strings; rekey by number. Only ids that already
+      // have an on-demand name need merging — those names win, being from the
+      // same cache or newer. 175k plain assignments otherwise.
       for (const [id, locales] of Object.entries(data)) {
-        map[Number(id)] = locales;
+        const key = Number(id);
+        const onDemand = itemNamesMap[key];
+        itemNamesMap[key] = onDemand ? { ...locales, ...onDemand } : locales;
       }
-      itemNamesMap = map;
-      for (const cb of itemNamesListeners) cb();
-      itemNamesListeners.length = 0;
+      itemNamesLoaded = true;
+      notifyItemNames();
     })
     .catch(() => {
-      itemNamesMap = {};
+      itemNamesLoaded = true;
     })
     .finally(() => {
       itemNamesFetching = false;
     });
 }
 
+// ---- On-demand names for locales item-names.json doesn't ship ----
+
+/** Locales the backend can resolve via Wowhead (see `wowhead_locale_id`). */
+const ON_DEMAND_LOCALES = new Set(['zh_CN']);
+/** Matches the backend's per-request id cap. */
+const MAX_LOCALIZE_IDS = 500;
+const LOCALIZE_DEBOUNCE_MS = 150;
+
+type NameKind = 'item' | 'spell';
+
+const pendingNameIds: Record<NameKind, Set<number>> = { item: new Set(), spell: new Set() };
+/** `locale:kind:id` already sent once — a miss is never re-requested this session. */
+const requestedNameKeys = new Set<string>();
+let pendingNameLocale: string | null = null;
+let localizeTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Queue one missing name for the next debounced batch. Safe to call during
+ * render: it only touches module state and schedules a timer.
+ */
+function requestLocalizedName(kind: NameKind, id: number, locale: string) {
+  if (typeof window === 'undefined') return;
+  if (!id || !ON_DEMAND_LOCALES.has(locale)) return;
+  const key = `${locale}:${kind}:${id}`;
+  if (requestedNameKeys.has(key)) return;
+  requestedNameKeys.add(key);
+  // A locale switch mid-batch: send what we have before mixing locales.
+  if (pendingNameLocale && pendingNameLocale !== locale) flushLocalizedNames();
+  pendingNameLocale = locale;
+  pendingNameIds[kind].add(id);
+  if (localizeTimer === null) {
+    localizeTimer = setTimeout(flushLocalizedNames, LOCALIZE_DEBOUNCE_MS);
+  }
+}
+
+function mergeLocalizedNames(
+  target: Record<number, Record<string, string>>,
+  names: Record<string, string> | undefined,
+  locale: string
+): boolean {
+  let merged = false;
+  for (const [id, name] of Object.entries(names ?? {})) {
+    if (!name) continue;
+    const key = Number(id);
+    target[key] = { ...target[key], [locale]: name };
+    merged = true;
+  }
+  return merged;
+}
+
+function flushLocalizedNames() {
+  if (localizeTimer !== null) {
+    clearTimeout(localizeTimer);
+    localizeTimer = null;
+  }
+  const locale = pendingNameLocale;
+  pendingNameLocale = null;
+  const items = [...pendingNameIds.item];
+  const spells = [...pendingNameIds.spell];
+  pendingNameIds.item.clear();
+  pendingNameIds.spell.clear();
+  if (!locale || (items.length === 0 && spells.length === 0)) return;
+
+  const batchItems = items.slice(0, MAX_LOCALIZE_IDS);
+  const batchSpells = spells.slice(0, MAX_LOCALIZE_IDS - batchItems.length);
+  // Over the cap: keep the remainder queued for the next flush.
+  const leftoverItems = items.slice(batchItems.length);
+  const leftoverSpells = spells.slice(batchSpells.length);
+  if (leftoverItems.length || leftoverSpells.length) {
+    for (const id of leftoverItems) pendingNameIds.item.add(id);
+    for (const id of leftoverSpells) pendingNameIds.spell.add(id);
+    pendingNameLocale = locale;
+    localizeTimer = setTimeout(flushLocalizedNames, LOCALIZE_DEBOUNCE_MS);
+  }
+
+  void fetch(`${API_URL}/api/item-names/localize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ locale, items: batchItems, spells: batchSpells }),
+  })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data: { items?: Record<string, string>; spells?: Record<string, string> } | null) => {
+      if (!data) return;
+      const changed =
+        mergeLocalizedNames(itemNamesMap, data.items, locale) ||
+        mergeLocalizedNames(spellNamesMap, data.spells, locale);
+      if (changed) notifyItemNames();
+    })
+    .catch(() => {});
+}
+
 /** Get item name in the given locale, falling back to the English name. */
 export function localizedItemName(itemId: number, fallbackName: string, locale: string): string {
   if (!locale || locale === 'en_US') return fallbackName;
-  return itemNamesMap?.[itemId]?.[locale] ?? fallbackName;
+  const name = itemNamesMap[itemId]?.[locale];
+  if (name) return name;
+  requestLocalizedName('item', itemId, locale);
+  return fallbackName;
 }
 
-/** Hook that triggers a fetch of item names and re-renders when ready. */
+/** Hook that fetches item names and re-renders whenever new names arrive. */
 export function useItemNames() {
-  const [, setReady] = useState(!!itemNamesMap);
-  const cbRef = useRef<(() => void) | null>(null);
+  const [, bumpVersion] = useState(0);
 
   useEffect(() => {
-    if (itemNamesMap) return;
-    const cb = () => setReady(true);
-    cbRef.current = cb;
-    itemNamesListeners.push(cb);
+    const cb = () => bumpVersion((n) => n + 1);
+    itemNamesListeners.add(cb);
     ensureItemNames();
     return () => {
-      const idx = itemNamesListeners.indexOf(cb);
-      if (idx >= 0) itemNamesListeners.splice(idx, 1);
+      itemNamesListeners.delete(cb);
     };
   }, []);
 }
@@ -313,16 +415,31 @@ export function localizedUpgrade(upgrade: string, t: (key: string) => string): s
   return translated + match[2];
 }
 
-/** Get enchant name in the given locale using the item-names lookup. */
+/** Get enchant name in the given locale. Enchants without a backing item
+ *  (runes, weapon enchants) are named through their spell instead. */
 export function localizedEnchantName(enchant: EnchantInfo, locale: string): string {
-  if (!locale || locale === 'en_US' || !enchant.item_id) return enchant.name;
-  return itemNamesMap?.[enchant.item_id]?.[locale] ?? enchant.name;
+  if (!locale || locale === 'en_US') return enchant.name;
+  if (enchant.item_id) {
+    const name = itemNamesMap[enchant.item_id]?.[locale];
+    if (name) return name;
+    requestLocalizedName('item', enchant.item_id, locale);
+    return enchant.name;
+  }
+  if (enchant.spell_id) {
+    const name = spellNamesMap[enchant.spell_id]?.[locale];
+    if (name) return name;
+    requestLocalizedName('spell', enchant.spell_id, locale);
+  }
+  return enchant.name;
 }
 
 /** Get gem name in the given locale using the item-names lookup. */
 export function localizedGemName(gem: GemInfo, locale: string): string {
   if (!locale || locale === 'en_US') return gem.name;
-  return itemNamesMap?.[gem.gem_id]?.[locale] ?? gem.name;
+  const name = itemNamesMap[gem.gem_id]?.[locale];
+  if (name) return name;
+  requestLocalizedName('item', gem.gem_id, locale);
+  return gem.name;
 }
 
 const ICON_BASE = 'https://render.worldofwarcraft.com/icons/56';

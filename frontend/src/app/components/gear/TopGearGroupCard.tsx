@@ -1,5 +1,10 @@
 import { SLOT_LABELS, type ResolvedItem } from '../../lib/types';
-import { getWowheadData, getWowheadUrl, localizedItemName } from '../../lib/useItemInfo';
+import {
+  getWowheadData,
+  getWowheadUrl,
+  localizedItemName,
+  useItemNames,
+} from '../../lib/useItemInfo';
 import { VOID_FORGE_ENABLED } from '../../lib/featureFlags';
 import GearItemRow from './GearItemRow';
 import { ENCHANT_SLOTS } from './itemOptions';
@@ -110,6 +115,8 @@ export default function TopGearGroupCard({
   onToggleLock,
   t,
 }: TopGearGroupCardProps) {
+  // Re-render when on-demand localized item names arrive.
+  useItemNames();
   // Only slots that actually wear something can be locked — a lock pins the
   // equipped item, so an empty slot has nothing to pin.
   const lockableSlots = group.slots.filter((slot) => equipped.some((item) => item.slot === slot));

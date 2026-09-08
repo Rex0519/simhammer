@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { apiUrl, fetchJsonOr } from '../../lib/api';
 import type { ResolvedItem } from '../../lib/types';
-import { localizedItemName, useGemInfo } from '../../lib/useItemInfo';
+import { localizedItemName, useGemInfo, useItemNames } from '../../lib/useItemInfo';
 import { useLanguage } from '../../lib/i18n';
 import GearItemRow from './GearItemRow';
 import {
@@ -34,6 +34,8 @@ export default function GemEnchantEditDialog({
   onConfirm,
 }: GemEnchantEditDialogProps) {
   const { t, locale } = useLanguage();
+  // Re-render when on-demand localized gem/enchant names arrive.
+  useItemNames();
   const socketCount = Math.max(item.sockets, item.gem_ids.length);
   const enchantable = ENCHANT_SLOTS.includes(item.slot);
 
