@@ -40,4 +40,12 @@ else
     echo "Skipping icon FileDataIDs (set BLIZZARD_CLIENT_ID/SECRET to refresh)."
 fi
 
+# Localized game names (items, spells, journal, currencies, classes/specs, ...)
+# from wago.tools. Raidbots only ships localized item names, so every other
+# Chinese label in the UI comes from here. Non-fatal: a wago outage must not
+# abort a data refresh, the app just falls back to English for those names.
+echo "Fetching zh_CN localized game names..."
+node "$SCRIPT_DIR/../../scripts/fetch-localized-names.mjs" zh_CN "$OUT_DIR" \
+    || echo "WARNING: localized name fetch failed; zh_CN game names will fall back to English."
+
 echo "Done."

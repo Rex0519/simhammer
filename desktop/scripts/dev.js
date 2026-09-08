@@ -1,4 +1,4 @@
-const { spawn, execSync } = require("child_process");
+const { spawn, execSync, execFileSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
@@ -105,6 +105,19 @@ async function fetchGameData(dataDir) {
     } catch (err) {
       console.log(`skipped (${err.message})`);
     }
+  }
+
+  // Localized game names from wago.tools (everything Raidbots does not ship a
+  // zh_CN name for: spells, journal instances/encounters, currencies, ...).
+  try {
+    console.log("[dev] Fetching zh_CN localized game names...");
+    execFileSync(
+      process.execPath,
+      [path.join(BACKEND_DIR, "scripts", "fetch-localized-names.mjs"), "zh_CN", dataDir],
+      { stdio: "inherit" }
+    );
+  } catch {
+    console.log("[dev] Localized name fetch failed; zh_CN game names fall back to English.");
   }
 
   // Fetch Blizzard data (season + instance images)
