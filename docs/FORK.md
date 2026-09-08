@@ -1,5 +1,9 @@
 # Rex0519/simhammer — fork notes
 
+The app is branded **Magic World Sim** (product name, window title, UI strings, installer
+names `MagicWorldSim-*`). Package name, `appId` (`com.simhammer.app`) and the user-data
+directory (`simhammer-desktop`) are unchanged so data and the update channel carry over.
+
 This fork of [sortbek/simcraft](https://github.com/sortbek/simcraft) carries
 Raidbots-parity features (zh_CN locale, Top Gear lock-slot / socket budget /
 upgrade budget, Drop Finder source priority summary, Talent Compare) and its
