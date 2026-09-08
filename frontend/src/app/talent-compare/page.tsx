@@ -7,14 +7,15 @@ import { useSimContext } from '../components/sim-config/SimContext';
 import { useSimSubmit } from '../lib/useSimSubmit';
 import TalentPicker from '../components/talents/TalentPicker';
 import ConfigFooter from '../components/sim-config/ConfigPanel';
-import { specDisplayName } from '../lib/types';
+import { localizedSpecClassName, useLocalizedNames } from '../lib/localizedNames';
 import { useLanguage } from '../lib/i18n';
 import { parseCharacterInfo } from '../lib/character';
 import { useComputeChoice } from '../lib/useComputeChoice';
 
 export default function TalentComparePage() {
   const { simcInput, hasInput, talentBuilds } = useSimContext();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
   const [compute, setCompute] = useComputeChoice('talent_compare');
 
   const characterInfo = useMemo(() => parseCharacterInfo(simcInput), [simcInput]);
@@ -60,7 +61,7 @@ export default function TalentComparePage() {
             {characterInfo.name}
           </h2>
           <span className="rounded bg-primary-container/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary">
-            {specDisplayName(characterInfo.spec)} {characterInfo.className.replace(/_/g, ' ')}
+            {localizedSpecClassName(characterInfo.spec, characterInfo.className, locale)}
           </span>
           {characterInfo.realm && (
             <span className="border-l border-outline-variant/30 pl-3 text-sm text-on-surface-variant">

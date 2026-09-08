@@ -3,12 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Checkbox from '../ui/Checkbox';
 import { useSimContext } from '../sim-config/SimContext';
-import {
-  parseTalentLoadouts,
-  SPEC_ID_TO_NAME,
-  specDisplayName,
-  classColorForSpec,
-} from '../../lib/types';
+import { parseTalentLoadouts, SPEC_ID_TO_NAME, classColorForSpec } from '../../lib/types';
 import type { TalentLoadoutParsed } from '../../lib/types';
 import { decodeHeader, decodeNodes } from '../../lib/talentDecode';
 import { encodeTalentString } from '../../lib/talentEncode';
@@ -18,6 +13,7 @@ import type { TalentTreeData } from '../../lib/useTalentTree';
 import TalentTree from './TalentTree';
 import { getCharacters, getTalentBuilds, type SavedTalentBuild } from '../../lib/saved-characters';
 import { useLanguage } from '../../lib/i18n';
+import { localizedSpecName, useLocalizedNames } from '../../lib/localizedNames';
 
 /** Check if a talent build has all points allocated. */
 function getBuildStatus(
@@ -72,7 +68,8 @@ export default function TalentPicker({
   /** Open straight into the multi-build compare grid (Talent Compare page). */
   defaultCompare?: boolean;
 }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
   const { simcInput, selectedTalent, setSelectedTalent, talentBuilds, setTalentBuilds } =
     useSimContext();
   const [viewMode, setViewMode] = useState<ViewMode>(defaultView);
@@ -117,14 +114,14 @@ export default function TalentPicker({
         const extra: TalentLoadoutParsed[] = builds
           .filter((b) => !addonStrings.has(b.talent_string))
           .map((b) => ({
-            name: `[${specDisplayName(b.spec)}] ${b.name}`,
+            name: `[${localizedSpecName(b.spec, locale)}] ${b.name}`,
             talentString: b.talent_string,
             isActive: false,
           }));
         setSavedBuilds(extra);
       });
     });
-  }, [simcInput]);
+  }, [simcInput, locale]);
 
   // Merge addon loadouts + saved builds from DB + custom (imported/blank) loadouts
   const allLoadouts = useMemo(
@@ -231,13 +228,13 @@ export default function TalentPicker({
     const importedSpecName = SPEC_ID_TO_NAME[importedSpecId];
     const isDifferentSpec = specId != null && importedSpecId !== specId;
     const prefix =
-      isDifferentSpec && importedSpecName ? `${specDisplayName(importedSpecName)} ` : '';
+      isDifferentSpec && importedSpecName ? `${localizedSpecName(importedSpecName, locale)} ` : '';
     const name = `${prefix}Import ${customLoadouts.length + 1}`;
     addCustomLoadout(name, talentStr);
     setShowImport(false);
     setImportValue('');
     setViewMode('view');
-  }, [importValue, customLoadouts.length, addCustomLoadout, specId, t]);
+  }, [importValue, customLoadouts.length, addCustomLoadout, specId, locale, t]);
 
   // Start from scratch
   const handleBlankBuild = useCallback(() => {
@@ -462,7 +459,7 @@ export default function TalentPicker({
                         backgroundColor: `${classColorForSpec(loadoutSpecName) ?? '#8b5cf6'}20`,
                       }}
                     >
-                      {specDisplayName(loadoutSpecName)}
+                      {localizedSpecName(loadoutSpecName, locale)}
                     </div>
                   )}
                   {/* Mini tree preview */}

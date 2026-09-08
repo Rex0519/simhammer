@@ -15,6 +15,7 @@ import TalentPicker from '../components/talents/TalentPicker';
 import ConfigFooter from '../components/sim-config/ConfigPanel';
 import { useLanguage } from '../lib/i18n';
 import { localizedItemName, useItemNames, getWowheadUrl } from '../lib/useItemInfo';
+import { localizedCurrencyName, useLocalizedNames } from '../lib/localizedNames';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useComputeChoice } from '../lib/useComputeChoice';
 
@@ -101,6 +102,7 @@ function useUpgradeData(simcInput: string) {
 
 export default function UpgradeComparePage() {
   const { t, locale } = useLanguage();
+  useLocalizedNames();
   useItemNames();
   const { simcInput, hasInput } = useSimContext();
   const [compute, setCompute] = useComputeChoice('upgrade_compare');
@@ -293,8 +295,9 @@ export default function UpgradeComparePage() {
                         className="h-4 w-4 shrink-0 rounded-sm"
                       />
                       <p className="text-[13px] font-semibold uppercase tracking-widest text-muted">
-                        {group.currency?.name ||
-                          t('upgradeCompare.unknownCurrency', { id: group.currencyId })}
+                        {group.currency
+                          ? localizedCurrencyName(group.currency.id, group.currency.name, locale)
+                          : t('upgradeCompare.unknownCurrency', { id: group.currencyId })}
                       </p>
                     </div>
                     <button

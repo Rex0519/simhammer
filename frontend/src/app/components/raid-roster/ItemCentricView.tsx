@@ -6,6 +6,9 @@ import { getWowheadUrl, getWowheadData, iconProps } from '../../lib/useItemInfo'
 import { QUALITY_HEX } from '../../lib/qualityColors';
 import { SLOT_LABELS } from '../../lib/types';
 import VariantBadges from '../loot/VariantBadges';
+import { useLanguage } from '../../lib/i18n';
+import { localizedEncounterNameByName, useLocalizedNames } from '../../lib/localizedNames';
+import { localizedItemName, useItemNames } from '../../lib/useItemInfo';
 
 interface Props {
   items: ReportItem[];
@@ -51,6 +54,9 @@ function ResultRow({ result, playerName }: { result: ReportItemResult; playerNam
 }
 
 export default function ItemCentricView({ items, players, itemInfo }: Props) {
+  const { locale } = useLanguage();
+  useLocalizedNames();
+  useItemNames();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   // Group items by boss, preserving first-seen order. Memoized so toggling a
@@ -103,7 +109,7 @@ export default function ItemCentricView({ items, players, itemInfo }: Props) {
               className="flex w-full items-center justify-between border-b border-outline-variant/10 bg-surface-container-low px-4 py-3 transition-colors hover:bg-surface-container-high/40"
             >
               <span className="font-headline text-sm font-black uppercase tracking-wider text-on-surface">
-                {boss}
+                {localizedEncounterNameByName(boss, locale)}
               </span>
               <span className="text-base text-on-surface-variant/60">
                 {isCollapsed ? '▸' : '▾'}
@@ -116,7 +122,11 @@ export default function ItemCentricView({ items, players, itemInfo }: Props) {
                   const info = itemInfo[item.item_id];
                   const quality = info?.quality ?? 3;
                   const iconName = info?.icon ?? 'inv_misc_questionmark';
-                  const displayName = item.name || info?.name || String(item.item_id);
+                  const displayName = localizedItemName(
+                    item.item_id,
+                    item.name || info?.name || String(item.item_id),
+                    locale
+                  );
 
                   return (
                     <div key={item.uid} className="px-4 py-3">

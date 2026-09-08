@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { API_URL } from '../../lib/api';
 import { useLanguage } from '../../lib/i18n';
 import { iconProps } from '../../lib/useItemInfo';
+import { localizedCurrencyName, useLocalizedNames } from '../../lib/localizedNames';
 import {
   storeUpgradeCurrencies,
   type UpgradeCurrencyMeta as CurrencyMeta,
@@ -26,7 +27,8 @@ export default function UpgradeBudgetPanel({
   budget: Record<string, number>;
   onBudgetChange: (budget: Record<string, number>) => void;
 }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
   const [currencies, setCurrencies] = useState<Record<string, CurrencyMeta> | null>(null);
   // The trimmed export that produced `currencies`. Without it the prefill effect
   // fires on a new export while `currencies` still holds the previous one's map,
@@ -136,11 +138,13 @@ export default function UpgradeBudgetPanel({
               className="flex items-center gap-1.5 rounded-md bg-surface-container-high px-2 py-1"
             >
               <img {...iconProps(c.icon)} alt="" className="h-4 w-4 shrink-0 rounded-sm" />
-              <span className="text-[13px] text-on-surface-variant">{c.name}</span>
+              <span className="text-[13px] text-on-surface-variant">
+                {localizedCurrencyName(c.id, c.name, locale)}
+              </span>
               <input
                 type="number"
                 min={0}
-                aria-label={c.name}
+                aria-label={localizedCurrencyName(c.id, c.name, locale)}
                 value={drafts[String(c.id)] ?? String(budget[String(c.id)] ?? 0)}
                 onChange={(event) => {
                   const raw = event.target.value;

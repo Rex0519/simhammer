@@ -9,6 +9,8 @@ interface AbilityRow {
 
 interface ResultsChartRowProps {
   ability: AbilityRow;
+  /** Localized ability name; falls back to the SimC `name` when absent. */
+  displayName?: string;
   color: string;
   percent: number;
   barWidth: number;
@@ -21,6 +23,7 @@ interface ResultsChartRowProps {
 
 export default function ResultsChartRow({
   ability,
+  displayName,
   color,
   percent,
   barWidth,
@@ -30,7 +33,7 @@ export default function ResultsChartRow({
   expanded = false,
   onToggle,
 }: ResultsChartRowProps) {
-  const name = ability.name.replace(/_/g, ' ');
+  const name = displayName || ability.name.replace(/_/g, ' ');
   const containerClass = compact
     ? 'mt-2 flex items-center gap-4 pl-14 opacity-75'
     : 'flex items-center gap-4';

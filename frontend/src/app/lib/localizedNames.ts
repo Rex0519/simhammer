@@ -75,6 +75,71 @@ export function useLocalizedNames() {
   }, [locale]);
 }
 
+// ---- English-name bridge ----
+//
+// Several payloads carry only an English instance or boss NAME with no id
+// (Top Gear combo metadata, the roster loot report, MDT dungeon summaries).
+// `/api/instances` is the one place that pairs both, so index it once and use
+// it to reach the id these callers are missing. Render-safe: touches module
+// state and schedules a fetch, exactly like `requestLocalizedName`.
+
+interface InstanceListEntry {
+  id: number;
+  name: string;
+  encounters?: { id: number; name: string }[];
+}
+
+const instanceIdsByName = new Map<string, number>();
+const encounterIdsByName = new Map<string, number>();
+let nameIndexRequested = false;
+
+function normalizeName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function ensureNameIndex() {
+  if (typeof window === 'undefined' || nameIndexRequested) return;
+  nameIndexRequested = true;
+  fetch(apiUrl('/api/instances'))
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data: InstanceListEntry[] | null) => {
+      if (!Array.isArray(data)) return;
+      for (const inst of data) {
+        if (inst.name) instanceIdsByName.set(normalizeName(inst.name), inst.id);
+        for (const enc of inst.encounters ?? []) {
+          if (enc.name) encounterIdsByName.set(normalizeName(enc.name), enc.id);
+        }
+      }
+      notify();
+    })
+    .catch(() => {});
+}
+
+function lookupByName(
+  index: Map<string, number>,
+  table: BundleTable,
+  name: string,
+  locale: string
+): string {
+  if (!name || !SUPPORTED_DATA_LOCALES.has(locale)) return name;
+  const id = index.get(normalizeName(name));
+  if (id === undefined) {
+    ensureNameIndex();
+    return name;
+  }
+  return lookup(table, id, locale) ?? name;
+}
+
+/** Instance name for a payload that only knows the English name. */
+export function localizedInstanceNameByName(name: string, locale: string): string {
+  return lookupByName(instanceIdsByName, 'instances', name, locale);
+}
+
+/** Boss name for a payload that only knows the English name. */
+export function localizedEncounterNameByName(name: string, locale: string): string {
+  return lookupByName(encounterIdsByName, 'encounters', name, locale);
+}
+
 /** Journal instance (dungeon / raid) name. */
 export function localizedInstanceName(
   instanceId: number | undefined | null,

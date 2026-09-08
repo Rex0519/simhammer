@@ -2,6 +2,12 @@
 
 import { useState, type KeyboardEvent } from 'react';
 import { useLanguage } from '../../lib/i18n';
+import {
+  localizedEncounterName,
+  localizedInstanceName,
+  useLocalizedNames,
+} from '../../lib/localizedNames';
+import { localizedItemName, useItemNames } from '../../lib/useItemInfo';
 import type { DropInstanceEntry, DropSourceEntry, DropSourceSummary } from './topGearResultsTypes';
 
 type View = 'sources' | 'instances';
@@ -18,7 +24,9 @@ export default function DropSourceSummaryTable({
   baseDps: number;
   onSelectSource?: () => void;
 }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
+  useItemNames();
   const [view, setView] = useState<View>('sources');
 
   const hasInstances = summary.instances.length > 0;
@@ -70,8 +78,18 @@ export default function DropSourceSummaryTable({
       <div className="space-y-1">
         {rows.map((row) => {
           const isSource = 'encounter' in row;
-          const label = isSource ? row.encounter : row.instance_name;
-          const sub = isSource ? row.instance_name : '';
+          // `key` is the encounter id when the backend knew one, else the boss name.
+          const encounterId = isSource ? Number(row.key) : NaN;
+          const label = isSource
+            ? localizedEncounterName(
+                Number.isFinite(encounterId) ? encounterId : undefined,
+                row.encounter,
+                locale
+              )
+            : localizedInstanceName(row.instance_id, row.instance_name, locale);
+          const sub = isSource
+            ? localizedInstanceName(row.instance_id, row.instance_name, locale)
+            : '';
           const bestItem = isSource ? row.best_item : null;
           // The row click regroups the result table by boss, which only makes
           // sense from the boss view — the instance rows stay non-interactive.
@@ -131,7 +149,7 @@ export default function DropSourceSummaryTable({
                   {bestItem && row.best > 0 ? (
                     <>
                       <p className="truncate text-[12px] text-on-surface-variant">
-                        {bestItem.name}
+                        {localizedItemName(bestItem.item_id, bestItem.name, locale)}
                       </p>
                       <span className="font-mono text-[11px] font-bold tabular-nums text-emerald-400">
                         +{Math.round(row.best).toLocaleString()}

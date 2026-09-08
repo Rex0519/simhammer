@@ -22,6 +22,8 @@ export interface TopGearResult {
 
 /** Metrics shared by the boss rows and the instance rollup of `source_summary`. */
 export interface DropSourceMetrics {
+  /** Journal instance id for `instance_name`, when the backend resolved one. */
+  instance_id?: number;
   /** Deduped droppable items simmed for this source. */
   items: number;
   upgrades: number;

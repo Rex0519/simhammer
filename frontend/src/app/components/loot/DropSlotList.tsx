@@ -3,6 +3,11 @@
 import { useMemo, useState } from 'react';
 import { useLanguage } from '../../lib/i18n';
 import { localizedItemName, useItemNames, getWowheadUrl, iconProps } from '../../lib/useItemInfo';
+import {
+  localizedEncounterName,
+  localizedInstanceName,
+  useLocalizedNames,
+} from '../../lib/localizedNames';
 import type { DropItem, UpgradeTracks } from './types';
 import { dropUid, dropWowheadAttr, getTrackInfo, resolveUpgrade, QUALITY_COLORS } from './types';
 import VariantBadges from './VariantBadges';
@@ -53,7 +58,8 @@ export default function DropSlotList({
   headerLabel,
   equippedEmbellishments = 0,
 }: DropSlotListProps) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
   const [groupMode, setGroupMode] = useState<GroupMode>('slot');
   const totalItems = Object.values(drops).reduce((n, items) => n + items.length, 0);
 
@@ -142,7 +148,9 @@ export default function DropSlotList({
       {(groupMode === 'instance' ? instanceSorted : slotSorted).map(([groupLabel, items]) => (
         <div key={groupLabel} className="card p-4">
           <h3 className="mb-3 font-headline text-[13px] font-semibold uppercase tracking-wider text-on-surface-variant/60">
-            {groupLabel}
+            {groupMode === 'instance'
+              ? localizedInstanceName(items[0]?.instance_id, groupLabel, locale)
+              : groupLabel}
             <span className="ml-1.5 font-normal normal-case tracking-normal text-on-surface-variant/40">
               ({items.length})
             </span>
@@ -189,6 +197,7 @@ function DropItemCard({
 }) {
   const { t, locale } = useLanguage();
   useItemNames();
+  useLocalizedNames();
   const resolved = resolveUpgrade(item, difficulty, dungeonDiff, upgradeLevel, upgradeTracks);
   const effectiveBonusId = getTrackInfo(item, difficulty, dungeonDiff)?.bonus_id;
   const isOffSpec = item.off_spec === true;
@@ -246,7 +255,9 @@ function DropItemCard({
           <VariantBadges item={item} />
         </span>
         {item.encounter && (
-          <span className="text-[12px] text-on-surface-variant/60">{item.encounter}</span>
+          <span className="text-[12px] text-on-surface-variant/60">
+            {localizedEncounterName(item.encounter_id, item.encounter, locale)}
+          </span>
         )}
       </div>
       <span

@@ -12,6 +12,8 @@ import {
 import type { Instance } from '../loot/types';
 import RosterReportView from './RosterReportView';
 import { StatusBadge } from './StatusBadge';
+import { useLanguage } from '../../lib/i18n';
+import { localizedInstanceName, useLocalizedNames } from '../../lib/localizedNames';
 
 interface Selected {
   run: RosterRun;
@@ -20,6 +22,8 @@ interface Selected {
 }
 
 export default function RosterHistory({ roster }: { roster: Roster }) {
+  const { locale } = useLanguage();
+  useLocalizedNames();
   const [runs, setRuns] = useState<RosterRun[]>([]);
   const [instanceNames, setInstanceNames] = useState<Record<number, string>>({});
   const [selected, setSelected] = useState<Selected | null>(null);
@@ -62,7 +66,8 @@ export default function RosterHistory({ roster }: { roster: Roster }) {
     setLoadingRun(false);
   };
 
-  const instanceName = (id: number) => instanceNames[id] ?? `Instance ${id}`;
+  const instanceName = (id: number) =>
+    localizedInstanceName(id, instanceNames[id] ?? `Instance ${id}`, locale);
 
   if (selected) {
     return (

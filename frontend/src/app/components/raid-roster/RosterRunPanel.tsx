@@ -15,8 +15,17 @@ import { useComputeChoice } from '../../lib/useComputeChoice';
 import CategorySelector from '../loot/CategorySelector';
 import DifficultySelect from '../loot/DifficultySelect';
 import UpgradeSelect from '../loot/UpgradeSelect';
+import { useLanguage } from '../../lib/i18n';
+import {
+  localizedEncounterName,
+  localizedInstanceName,
+  useLocalizedNames,
+} from '../../lib/localizedNames';
 
 export default function RosterRunPanel({ roster }: { roster: Roster }) {
+  const { locale } = useLanguage();
+  useLocalizedNames();
+
   // Source data
   const [instances, setInstances] = useState<Instance[]>([]);
   const [seasonConfig, setSeasonConfig] = useState<SeasonConfigResponse | null>(null);
@@ -279,7 +288,7 @@ export default function RosterRunPanel({ roster }: { roster: Roster }) {
                 {raids.length === 0 && <option value="">Loading…</option>}
                 {raids.map((raid) => (
                   <option key={raid.id} value={raid.id}>
-                    {raid.name}
+                    {localizedInstanceName(raid.id, raid.name, locale)}
                   </option>
                 ))}
               </select>
@@ -405,7 +414,9 @@ export default function RosterRunPanel({ roster }: { roster: Roster }) {
                       disabled={running}
                       className="accent-primary"
                     />
-                    <span className="truncate">{boss.name}</span>
+                    <span className="truncate">
+                      {localizedEncounterName(boss.id, boss.name, locale)}
+                    </span>
                   </label>
                 );
               })}

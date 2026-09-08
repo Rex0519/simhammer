@@ -1,6 +1,6 @@
 import { useRouter } from 'next/navigation';
 import type { JobOverviewSummary } from '../../lib/api';
-import { specDisplayName } from '../../lib/types';
+import { localizedClassName, useLocalizedNames } from '../../lib/localizedNames';
 import { useLanguage } from '../../lib/i18n';
 import { JobActionButtons } from './JobActionButtons';
 import { SIM_TYPE_LABELS, StatusDot, timeAgo } from './shared';
@@ -15,7 +15,8 @@ interface ActiveRowProps {
 
 function ActiveRow({ job, busy, onPause, onResume, onCancel }: ActiveRowProps) {
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
   const navigate = () => router.push(`/sim/${job.id}`);
 
   return (
@@ -45,7 +46,7 @@ function ActiveRow({ job, busy, onPause, onResume, onCancel }: ActiveRowProps) {
         {job.player_name ?? '—'}
         {job.player_class && (
           <span className="ml-1.5 text-on-surface-variant/60">
-            ({specDisplayName(job.player_class)})
+            ({localizedClassName(job.player_class, locale)})
           </span>
         )}
       </td>

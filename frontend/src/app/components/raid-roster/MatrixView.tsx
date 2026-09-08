@@ -5,6 +5,9 @@ import { getWowheadUrl, getWowheadData, iconProps } from '../../lib/useItemInfo'
 import { QUALITY_HEX } from '../../lib/qualityColors';
 import { heatClasses } from './reportTypes';
 import VariantBadges from '../loot/VariantBadges';
+import { useLanguage } from '../../lib/i18n';
+import { localizedEncounterNameByName, useLocalizedNames } from '../../lib/localizedNames';
+import { localizedItemName, useItemNames } from '../../lib/useItemInfo';
 
 interface Props {
   items: ReportItem[]; // filtered + sorted by container
@@ -14,6 +17,10 @@ interface Props {
 }
 
 export default function MatrixView({ items, players, lookup, itemInfo }: Props) {
+  const { locale } = useLanguage();
+  useLocalizedNames();
+  useItemNames();
+
   if (items.length === 0 || players.length === 0) {
     return (
       <div className="py-12 text-center text-sm text-on-surface-variant/50">
@@ -30,7 +37,11 @@ export default function MatrixView({ items, players, lookup, itemInfo }: Props) 
     const info = itemInfo[item.item_id];
     const quality = info?.quality ?? 3;
     const iconName = info?.icon ?? 'inv_misc_questionmark';
-    const displayName = item.name || info?.name || String(item.item_id);
+    const displayName = localizedItemName(
+      item.item_id,
+      item.name || info?.name || String(item.item_id),
+      locale
+    );
     const qualityColor = QUALITY_HEX[quality] ?? '#ffffff';
     const itemResults = lookup.get(item.uid);
 
@@ -42,7 +53,7 @@ export default function MatrixView({ items, players, lookup, itemInfo }: Props) 
             colSpan={players.length + 1}
             className="bg-surface-container px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60"
           >
-            {item.boss}
+            {localizedEncounterNameByName(item.boss, locale)}
           </td>
         </tr>
       );

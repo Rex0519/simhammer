@@ -19,6 +19,7 @@ import { useTalentTree } from '../../lib/useTalentTree';
 import type { TalentNode, TalentTreeData } from '../../lib/useTalentTree';
 import { iconHrefProps, wowheadHost } from '../../lib/useItemInfo';
 import { useLanguage } from '../../lib/i18n';
+import { localizedClassName, localizedSpecName, useLocalizedNames } from '../../lib/localizedNames';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 
 interface TalentTreeProps {
@@ -43,6 +44,11 @@ const GOLD = '#f2bf4e';
 const DIM = 'rgba(255,255,255,0.15)';
 const DIM_ICON = 0.3;
 const LOCKED_ICON = 0.15;
+
+/** "Death Knight" / "Beast Mastery" -> the SimC id the name helpers key on. */
+function simcKey(displayName: string): string {
+  return displayName.trim().toLowerCase().replace(/\s+/g, '_');
+}
 
 export default function TalentTree({
   talentString,
@@ -176,6 +182,7 @@ export default function TalentTree({
   );
 
   const { t, locale } = useLanguage();
+  useLocalizedNames();
 
   useWowheadTooltips([selections]);
 
@@ -232,7 +239,7 @@ export default function TalentTree({
       )}
       <div className={`flex flex-col gap-3 ${vertical ? '' : 'lg:flex-row lg:gap-4'}`}>
         <TreeSection
-          label={tree.className}
+          label={localizedClassName(simcKey(tree.className), locale)}
           nodes={tree.classNodes}
           selections={selections}
           allNodes={[...tree.classNodes, ...tree.specNodes, ...tree.heroNodes]}
@@ -246,7 +253,7 @@ export default function TalentTree({
         />
         <div className="hidden h-auto w-px bg-outline-variant/10 lg:block" />
         <TreeSection
-          label={tree.specName}
+          label={localizedSpecName(simcKey(tree.specName), locale)}
           nodes={tree.specNodes}
           selections={selections}
           allNodes={[...tree.classNodes, ...tree.specNodes, ...tree.heroNodes]}

@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import type { MdtConversion } from '../../lib/api';
 import { saveRoute, type SavedRoute } from '../../lib/saved-routes';
 import { useLanguage } from '../../lib/i18n';
+import { localizedInstanceNameByName, useLocalizedNames } from '../../lib/localizedNames';
 import { T } from './routeTheme';
 import RouteHeader from './RouteHeader';
 import RouteMap from './RouteMap';
@@ -30,7 +31,8 @@ export default function RouteViewer({
   /** Return to the routes library. */
   onBack?: () => void;
 }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  useLocalizedNames();
   const [toast, setToast] = useState<string | null>(null);
   const [modal, setModal] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -87,7 +89,7 @@ export default function RouteViewer({
       }}
     >
       <RouteHeader
-        dungeonName={conv.dungeon_name}
+        dungeonName={localizedInstanceNameByName(conv.dungeon_name, locale)}
         keystoneLevel={conv.keystone_level}
         pullCount={editor.pulls.length}
         enemyCount={editor.enemyCount}
@@ -118,7 +120,7 @@ export default function RouteViewer({
 
       {modal && (
         <SaveModal
-          dungeonName={conv.dungeon_name}
+          dungeonName={localizedInstanceNameByName(conv.dungeon_name, locale)}
           keystoneLevel={conv.keystone_level}
           pullCount={editor.pulls.length}
           enemyCount={editor.enemyCount}
