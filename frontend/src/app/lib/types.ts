@@ -252,6 +252,8 @@ export const SLOT_LABEL_KEYS: Record<string, string> = {
   'Two-Hand': 'slot.twoHand',
   Ranged: 'slot.ranged',
   Held: 'slot.held',
+  Shield: 'slot.shield',
+  'Held In Off-Hand': 'slot.offHand',
 };
 
 /** Translated slot label; unknown slots keep the English `SLOT_LABELS` value. */
@@ -272,15 +274,23 @@ const DIFFICULTY_LABEL_KEYS: Record<string, string> = {
   'Mythic+': 'difficulty.mythicPlus',
 };
 
-/** Translated difficulty label. Labels we ship no key for (crest names, "+7",
- *  PvP rank names) come back unchanged; "Mythic 5" keeps its number. */
+/** Translated difficulty label. Words with no `difficulty.*` key fall back to
+ *  the upgrade-track keys (`track.*`), which cover the Catalyst and delve
+ *  difficulty groups (Adventurer / Veteran / Champion / Hero / Myth). Labels we
+ *  ship no key for at all (crest names, "+7", PvP rank names) come back
+ *  unchanged; "Mythic 5" keeps its number. */
 export function difficultyLabel(label: string, t: (key: string) => string): string {
   if (!label) return label;
   const exact = DIFFICULTY_LABEL_KEYS[label];
   if (exact) return t(exact);
   const parts = label.match(/^(\S+)( \d+)$/);
-  const wordKey = parts ? DIFFICULTY_LABEL_KEYS[parts[1]] : undefined;
-  return parts && wordKey ? `${t(wordKey)}${parts[2]}` : label;
+  const word = parts ? parts[1] : label;
+  const suffix = parts ? parts[2] : '';
+  const wordKey = DIFFICULTY_LABEL_KEYS[word];
+  if (wordKey) return `${t(wordKey)}${suffix}`;
+  const trackKey = `track.${word}`;
+  const track = t(trackKey);
+  return track === trackKey ? label : `${track}${suffix}`;
 }
 
 // ---- Class / Spec Data ----

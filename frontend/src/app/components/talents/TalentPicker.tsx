@@ -69,7 +69,7 @@ export default function TalentPicker({
   defaultCompare?: boolean;
 }) {
   const { t, locale } = useLanguage();
-  useLocalizedNames();
+  const namesVersion = useLocalizedNames();
   const { simcInput, selectedTalent, setSelectedTalent, talentBuilds, setTalentBuilds } =
     useSimContext();
   const [viewMode, setViewMode] = useState<ViewMode>(defaultView);
@@ -121,7 +121,7 @@ export default function TalentPicker({
         setSavedBuilds(extra);
       });
     });
-  }, [simcInput, locale]);
+  }, [simcInput, locale, namesVersion]);
 
   // Merge addon loadouts + saved builds from DB + custom (imported/blank) loadouts
   const allLoadouts = useMemo(

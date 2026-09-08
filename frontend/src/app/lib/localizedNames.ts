@@ -50,7 +50,11 @@ function ensureLocalizedNames(locale: string) {
       bundles[locale] = data;
       notify();
     })
-    .catch(() => {});
+    .catch(() => {
+      // Network failure (not a 404): allow one retry on a later mount. A 404
+      // stays sticky — the backend ships no bundle for this locale.
+      requestedLocales.delete(locale);
+    });
 }
 
 function lookup(table: BundleTable, id: number | string, locale: string): string | undefined {
@@ -60,10 +64,13 @@ function lookup(table: BundleTable, id: number | string, locale: string): string
 }
 
 /** Subscribe to the bundle for the active locale; re-renders when it arrives.
- *  Every component that calls one of the helpers below must call this. */
-export function useLocalizedNames() {
+ *  Every component that calls one of the helpers below must call this.
+ *  Returns a version counter that changes on every bundle arrival — add it to
+ *  the deps of any memo or effect that reads a localized name, otherwise that
+ *  value stays English until some other dep happens to change. */
+export function useLocalizedNames(): number {
   const { locale } = useLanguage();
-  const [, bumpVersion] = useState(0);
+  const [version, bumpVersion] = useState(0);
 
   useEffect(() => {
     const cb = () => bumpVersion((n) => n + 1);
@@ -73,6 +80,8 @@ export function useLocalizedNames() {
       listeners.delete(cb);
     };
   }, [locale]);
+
+  return version;
 }
 
 // ---- English-name bridge ----

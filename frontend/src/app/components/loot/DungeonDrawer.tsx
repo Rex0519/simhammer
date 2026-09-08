@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLanguage } from '../../lib/i18n';
 import { localizedInstanceName, useLocalizedNames } from '../../lib/localizedNames';
 
@@ -26,7 +26,10 @@ export default function DungeonDrawer({
   const allSelected = instances.length > 0 && instances.every((i) => selectedIds.has(String(i.id)));
   const count = instances.filter((i) => selectedIds.has(String(i.id))).length;
 
-  const summaryLabel = useMemo(() => {
+  // Computed at render, not memoized: both read localized names, which arrive
+  // asynchronously, and a memo would keep serving the English strings it was
+  // built from until an unrelated dep changed.
+  function computeSummaryLabel(): string {
     if (count === 0) return t('dropFinder.noneSelected') ?? 'None selected';
     if (allSelected) return allLabel;
     if (count === 1) {
@@ -34,9 +37,9 @@ export default function DungeonDrawer({
       return sel ? localizedInstanceName(sel.id, sel.name, locale) : `${count} selected`;
     }
     return `${count} selected`;
-  }, [count, allSelected, allLabel, instances, selectedIds, locale, t]);
+  }
 
-  const summaryDetail = useMemo(() => {
+  function computeSummaryDetail(): string {
     if (count === 0) return t('dropFinder.chooseSource') ?? 'Choose at least one source';
     if (allSelected) return t('dropFinder.fullPool') ?? 'Full seasonal pool included';
     const names = instances
@@ -44,7 +47,10 @@ export default function DungeonDrawer({
       .map((i) => localizedInstanceName(i.id, i.name, locale));
     if (names.length <= 2) return names.join(' · ');
     return names.slice(0, 2).join(' · ') + ' …';
-  }, [count, allSelected, instances, selectedIds, locale, t]);
+  }
+
+  const summaryLabel = computeSummaryLabel();
+  const summaryDetail = computeSummaryDetail();
 
   function toggleInstance(id: string) {
     const next = new Set(selectedIds);

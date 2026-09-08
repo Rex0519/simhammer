@@ -78,14 +78,11 @@ export default function DropSourceSummaryTable({
       <div className="space-y-1">
         {rows.map((row) => {
           const isSource = 'encounter' in row;
-          // `key` is the encounter id when the backend knew one, else the boss name.
-          const encounterId = isSource ? Number(row.key) : NaN;
+          // `key` is the encounter id when the backend knew one, else the boss
+          // name — only an all-digits key is an id.
+          const encounterId = isSource && /^\d+$/.test(row.key) ? Number(row.key) : undefined;
           const label = isSource
-            ? localizedEncounterName(
-                Number.isFinite(encounterId) ? encounterId : undefined,
-                row.encounter,
-                locale
-              )
+            ? localizedEncounterName(encounterId, row.encounter, locale)
             : localizedInstanceName(row.instance_id, row.instance_name, locale);
           const sub = isSource
             ? localizedInstanceName(row.instance_id, row.instance_name, locale)

@@ -9,11 +9,7 @@ import {
   type SavedCharacter,
 } from '../../lib/saved-characters';
 import { useLanguage } from '../../lib/i18n';
-import {
-  localizedSpecClassName,
-  localizedSpecName,
-  useLocalizedNames,
-} from '../../lib/localizedNames';
+import { localizedSpecClassName, useLocalizedNames } from '../../lib/localizedNames';
 import { parseCharacterInfo } from '../../lib/character';
 
 export default function SidebarCharacter() {

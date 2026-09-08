@@ -164,6 +164,7 @@
   "slot.twoHand": "Dos manos",
   "slot.ranged": "A distancia",
   "slot.held": "Objeto de mano izquierda",
+  "slot.shield": "Escudo",
   "gear.equippedGear": "Equipo actual",
   "gear.bestGear": "Mejor equipo",
   "gear.selectedGear": "Equipo seleccionado",

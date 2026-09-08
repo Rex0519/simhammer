@@ -225,6 +225,7 @@
   "slot.twoHand": "双手",
   "slot.ranged": "远程",
   "slot.held": "副手物品",
+  "slot.shield": "盾牌",
   "gear.equippedGear": "当前装备",
   "gear.bestGear": "最佳装备",
   "gear.selectedGear": "已选装备",
