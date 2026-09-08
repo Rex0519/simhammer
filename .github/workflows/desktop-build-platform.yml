@@ -150,7 +150,17 @@ jobs:
         run: cd desktop && npm run build:backend
 
       - name: Build installer
-        run: cd desktop && npx electron-builder --publish never
+        shell: bash
+        # Forks without signing secrets get empty CSC_*/APPLE_* values; an empty
+        # CSC_LINK makes electron-builder try to read a certificate from the
+        # working directory ("not a file"). Drop empty variables so the build
+        # is simply unsigned; with secrets present nothing changes.
+        run: |
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!v}" ]; then unset "$v"; fi
+          done
+          if [ -z "${CSC_LINK:-}" ]; then export CSC_IDENTITY_AUTO_DISCOVERY=false; fi
+          cd desktop && npx electron-builder --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ inputs.platform == 'macos' && secrets.CSC_LINK || '' }}
