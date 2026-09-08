@@ -320,6 +320,7 @@
   "loot.allRaids": "全部团队副本",
   "loot.allCrafted": "全部专业制造（史诗）",
   "loot.allDungeons": "全部地下城",
+  "talent.activeLoadout": "当前",
   "talent.equipped": "（当前使用）",
   "talent.equippedShort": "（当前）",
   "talent.compare": "对比",

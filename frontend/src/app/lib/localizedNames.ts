@@ -144,8 +144,14 @@ export function localizedInstanceNameByName(name: string, locale: string): strin
   return lookupByName(instanceIdsByName, 'instances', name, locale);
 }
 
-/** Boss name for a payload that only knows the English name. */
+/** Boss name for a payload that only knows the English name. When the name is
+ *  also a known instance name the row is a M+ pool "encounter" that stands for
+ *  the dungeon itself, so translate it as the instance. */
 export function localizedEncounterNameByName(name: string, locale: string): string {
+  if (name && SUPPORTED_DATA_LOCALES.has(locale)) {
+    const instanceId = instanceIdsByName.get(normalizeName(name));
+    if (instanceId !== undefined) return lookup('instances', instanceId, locale) ?? name;
+  }
   return lookupByName(encounterIdsByName, 'encounters', name, locale);
 }
 
@@ -158,12 +164,19 @@ export function localizedInstanceName(
   return lookup('instances', instanceId ?? 0, locale) ?? fallback;
 }
 
-/** Journal encounter (boss) name. */
+/** Journal encounter (boss) name. The M+ pool (instance id -1) synthesises one
+ *  "encounter" per dungeon, so its drop rows carry `encounter_id ===
+ *  instance_id`; resolve those through the instance table or we render whatever
+ *  unrelated boss happens to own that journal id. */
 export function localizedEncounterName(
   encounterId: number | undefined | null,
   fallback: string,
-  locale: string
+  locale: string,
+  instanceId?: number | null
 ): string {
+  if (encounterId != null && encounterId === instanceId) {
+    return lookup('instances', encounterId, locale) ?? fallback;
+  }
   return lookup('encounters', encounterId ?? 0, locale) ?? fallback;
 }
 

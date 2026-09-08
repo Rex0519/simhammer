@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Checkbox from '../ui/Checkbox';
 import { useSimContext } from '../sim-config/SimContext';
-import { parseTalentLoadouts, SPEC_ID_TO_NAME, classColorForSpec } from '../../lib/types';
+import {
+  parseTalentLoadouts,
+  SPEC_ID_TO_NAME,
+  classColorForSpec,
+  loadoutDisplayName,
+} from '../../lib/types';
 import type { TalentLoadoutParsed } from '../../lib/types';
 import { decodeHeader, decodeNodes } from '../../lib/talentDecode';
 import { encodeTalentString } from '../../lib/talentEncode';
@@ -322,7 +327,7 @@ export default function TalentPicker({
             >
               {allLoadouts.map((l, i) => (
                 <option key={`${l.name}-${i}`} value={i}>
-                  {l.name}
+                  {loadoutDisplayName(l.name, t)}
                   {l.isActive ? ` ${t('talent.equipped')}` : ''}
                 </option>
               ))}
@@ -468,11 +473,15 @@ export default function TalentPicker({
                   </div>
                   {/* Label + checkbox */}
                   <div className="mt-1.5 flex items-center gap-1.5">
-                    <Checkbox checked={checked} size="sm" aria-label={l.name} />
+                    <Checkbox
+                      checked={checked}
+                      size="sm"
+                      aria-label={loadoutDisplayName(l.name, t)}
+                    />
                     <span
                       className={`truncate text-[12px] font-medium ${checked ? 'text-on-surface' : 'text-on-surface-variant/60'}`}
                     >
-                      {l.name}
+                      {loadoutDisplayName(l.name, t)}
                       {l.isActive ? ` ${t('talent.equippedShort')}` : ''}
                     </span>
                   </div>

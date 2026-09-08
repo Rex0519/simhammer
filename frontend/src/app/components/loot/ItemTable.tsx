@@ -393,7 +393,12 @@ export default function ItemTable({
                         <p className="text-[10px] text-on-surface-variant/60">
                           {item.instance_name &&
                             `${localizedInstanceName(item.instance_id, item.instance_name, locale)} • `}
-                          {localizedEncounterName(item.encounter_id, item.encounter, locale)}
+                          {localizedEncounterName(
+                            item.encounter_id,
+                            item.encounter,
+                            locale,
+                            item.instance_id
+                          )}
                         </p>
                       )}
                     </div>

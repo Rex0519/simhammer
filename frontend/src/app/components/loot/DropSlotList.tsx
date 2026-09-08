@@ -257,7 +257,7 @@ function DropItemCard({
         </span>
         {item.encounter && (
           <span className="text-[12px] text-on-surface-variant/60">
-            {localizedEncounterName(item.encounter_id, item.encounter, locale)}
+            {localizedEncounterName(item.encounter_id, item.encounter, locale, item.instance_id)}
           </span>
         )}
       </div>

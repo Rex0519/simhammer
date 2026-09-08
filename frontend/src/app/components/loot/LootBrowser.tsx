@@ -389,11 +389,16 @@ export default function LootBrowser({ footer }: LootBrowserProps) {
 
   const upgradeLevelOptions = useMemo(() => {
     if (!currentTrackInfo) return [];
+    // Track words live under `track.*`; a locale that has not translated one
+    // returns the key itself, so fall back to the English name in that case.
+    const trackKey = `track.${currentTrackInfo.name}`;
+    const translated = t(trackKey);
+    const trackName = translated === trackKey ? currentTrackInfo.name : translated;
     return [
       { key: 0, label: t('dropFinder.base') },
       ...currentTrackInfo.levels.map((lvl) => ({
         key: lvl.level,
-        label: `${currentTrackInfo.name} ${lvl.level}/${lvl.max_level}`,
+        label: `${trackName} ${lvl.level}/${lvl.max_level}`,
         sublabel: String(lvl.ilvl),
       })),
     ];

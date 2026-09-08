@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { simRow } from '../../lib/api';
-import { slotLabel } from '../../lib/types';
+import { loadoutDisplayName, slotLabel } from '../../lib/types';
 import {
   QUALITY_COLORS,
   getWowheadData,
@@ -433,7 +433,7 @@ const ResultRow = memo(function ResultRow({
       {result.talent_spec && (
         <span className="text-purple-300">{localizedSpecName(result.talent_spec, locale)}</span>
       )}
-      <span className="text-purple-400/70">{result.talent_build}</span>
+      <span className="text-purple-400/70">{loadoutDisplayName(result.talent_build ?? '', t)}</span>
     </span>
   ) : null;
 

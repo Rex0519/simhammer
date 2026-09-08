@@ -7,6 +7,7 @@ import { localizedSpecName, useLocalizedNames } from '../../lib/localizedNames';
 import { decodeHeader } from '../../lib/talentDecode';
 import { diffTalentStrings, type TalentDiffEntry } from '../../lib/talentDiff';
 import { useTalentTree } from '../../lib/useTalentTree';
+import { loadoutDisplayName } from '../../lib/types';
 import { iconProps, localizedSpellName, useItemNames, wowheadHost } from '../../lib/useItemInfo';
 import type { TopGearResult } from '../gear/topGearResultsTypes';
 
@@ -190,7 +191,7 @@ export default function TalentCompareResults({ baseDps, results }: TalentCompare
                         />
                       )}
                       <span className="truncate text-[14px] font-medium text-on-surface">
-                        {row.talent_build || row.name}
+                        {loadoutDisplayName(row.talent_build || row.name, t)}
                       </span>
                       {row.talent_spec && (
                         <span className="shrink-0 rounded bg-primary-container/20 px-1.5 py-px text-[10px] font-bold uppercase tracking-widest text-primary">
@@ -230,7 +231,9 @@ export default function TalentCompareResults({ baseDps, results }: TalentCompare
       {/* Talent diff vs the baseline build */}
       <div className="card space-y-3 p-4">
         <p className="text-[12px] font-medium uppercase tracking-wider text-muted">
-          {t('talentCompare.diffTitle', { name: baseline?.talent_build || baseline?.name || '' })}
+          {t('talentCompare.diffTitle', {
+            name: loadoutDisplayName(baseline?.talent_build || baseline?.name || '', t),
+          })}
         </p>
         {crossSpec ? (
           <p className="text-[13px] text-on-surface-variant">{t('talentCompare.crossSpec')}</p>

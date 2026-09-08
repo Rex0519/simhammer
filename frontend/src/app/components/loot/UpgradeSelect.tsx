@@ -1,5 +1,6 @@
 'use client';
 
+import { useLanguage } from '../../lib/i18n';
 import Select from './Select';
 
 interface UpgradeOption {
@@ -15,6 +16,7 @@ interface UpgradeSelectProps {
 }
 
 export default function UpgradeSelect({ value, onChange, options }: UpgradeSelectProps) {
+  const { t } = useLanguage();
   return (
     <Select
       value={value}
@@ -22,7 +24,7 @@ export default function UpgradeSelect({ value, onChange, options }: UpgradeSelec
       options={options.map((o) => ({
         value: o.key,
         label: o.label,
-        sublabel: o.sublabel ? `ilvl ${o.sublabel}` : undefined,
+        sublabel: o.sublabel ? t('loot.ilvl', { ilvl: o.sublabel }) : undefined,
       }))}
     />
   );

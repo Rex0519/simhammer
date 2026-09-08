@@ -82,7 +82,7 @@ export default function DropSourceSummaryTable({
           // name — only an all-digits key is an id.
           const encounterId = isSource && /^\d+$/.test(row.key) ? Number(row.key) : undefined;
           const label = isSource
-            ? localizedEncounterName(encounterId, row.encounter, locale)
+            ? localizedEncounterName(encounterId, row.encounter, locale, row.instance_id)
             : localizedInstanceName(row.instance_id, row.instance_name, locale);
           const sub = isSource
             ? localizedInstanceName(row.instance_id, row.instance_name, locale)

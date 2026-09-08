@@ -152,6 +152,13 @@ const TALENT_SLOT_RE = new RegExp(
 );
 const TALENT_HEADER_RE = /^#+\s*(.+?)\s*\((\d+)\)\s*$/;
 
+/** The equipped loadout is stored as the literal `Active` (see
+ *  `parseTalentLoadouts` and the backend SimC parser), so it is the one loadout
+ *  name that is ours to translate. Every other name comes from the player. */
+export function loadoutDisplayName(name: string, t: (key: string) => string): string {
+  return name === 'Active' ? t('talent.activeLoadout') : name;
+}
+
 export function parseTalentLoadouts(simcInput: string): TalentLoadoutParsed[] {
   const loadouts: TalentLoadoutParsed[] = [];
   let pendingLabel = '';
