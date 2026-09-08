@@ -22,6 +22,8 @@
   "layout.saveNewRoute": "Salva nuovo percorso",
   "layout.updateAvailable": "Aggiornamento disponibile",
   "layout.updateReady": "SimHammer v{version} è pronto per l'installazione.",
+  "layout.downloadDmg": "Scarica DMG",
+  "layout.updateManualMac": "SimHammer v{version} è disponibile. Scarica il DMG e trascina SimHammer in Applicazioni per sostituire la versione attuale.",
   "layout.updateTo": "Aggiorna a v{version}",
   "layout.downloading": "Download {progress}%",
   "layout.installRestart": "Installa e riavvia",

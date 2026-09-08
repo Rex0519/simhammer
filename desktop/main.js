@@ -81,7 +81,7 @@ app.whenReady().then(async () => {
   }
 
   windowController.createWindow();
-  setupAutoUpdater(app, ipcMain, windowController.getMainWindow);
+  setupAutoUpdater(app, ipcMain, windowController.getMainWindow, shell);
 });
 
 app.on("window-all-closed", () => {

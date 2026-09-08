@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Auto-updater
   checkForUpdate: () => ipcRenderer.invoke("updater:check"),
   downloadAndInstall: () => ipcRenderer.invoke("updater:downloadAndInstall"),
+  getUpdateInstallMode: () => ipcRenderer.invoke("updater:installMode"),
   onUpdateAvailable: (callback) => {
     const handler = (_event, version) => callback(version);
     ipcRenderer.on("updater:update-available", handler);

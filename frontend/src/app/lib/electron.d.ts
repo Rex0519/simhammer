@@ -30,6 +30,7 @@ interface ElectronAPI {
   onMaximizedChange: (callback: (maximized: boolean) => void) => () => void;
   checkForUpdate: () => Promise<{ version: string } | null>;
   downloadAndInstall: () => Promise<void>;
+  getUpdateInstallMode?: () => Promise<'download' | 'inplace'>;
   onUpdateAvailable: (callback: (version: string) => void) => () => void;
   onDownloadProgress: (callback: (percent: number) => void) => () => void;
   startClipboardPolling: (intervalMs: number) => Promise<void>;

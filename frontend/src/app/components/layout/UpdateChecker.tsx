@@ -14,6 +14,7 @@ export default function UpdateChecker() {
   const [error, setError] = useState('');
   const [open, setOpen] = useState(false);
   const [simulated, setSimulated] = useState(false);
+  const [installMode, setInstallMode] = useState<'download' | 'inplace'>('inplace');
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -34,6 +35,13 @@ export default function UpdateChecker() {
         }
       } catch {}
     }
+
+    api
+      .getUpdateInstallMode?.()
+      .then((mode) => {
+        if (mode) setInstallMode(mode);
+      })
+      .catch(() => {});
 
     const unlisten = api.onUpdateAvailable((ver) => {
       reveal(ver);
@@ -76,6 +84,17 @@ export default function UpdateChecker() {
     }
     const api = window.electronAPI;
     if (!api) return;
+    if (installMode === 'download') {
+      // Unsigned macOS builds cannot self-install; the main process opens the
+      // release DMG in the browser instead.
+      try {
+        await api.downloadAndInstall();
+        setOpen(false);
+      } catch (e: any) {
+        setError(e?.message || 'Update failed');
+      }
+      return;
+    }
     setInstalling(true);
     setError('');
     try {
@@ -117,7 +136,9 @@ export default function UpdateChecker() {
           <div className="absolute bottom-full left-0 right-0 z-50 mb-2 rounded-lg border border-outline-variant bg-surface-container-high p-3 shadow-lg shadow-black/40">
             <p className="text-sm font-medium text-on-surface">{t('layout.updateAvailable')}</p>
             <p className="mt-0.5 text-xs text-on-surface-variant">
-              {t('layout.updateReady', { version })}
+              {installMode === 'download'
+                ? t('layout.updateManualMac', { version })
+                : t('layout.updateReady', { version })}
             </p>
             {error && <p className="mt-1 text-xs text-error">{t('layout.updateFailed')}</p>}
             <div className="mt-3 flex flex-wrap gap-2">
@@ -126,7 +147,11 @@ export default function UpdateChecker() {
                 disabled={installing}
                 className="rounded bg-primary px-3 py-1.5 text-xs font-medium text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-50"
               >
-                {installing ? t('layout.downloading', { progress }) : t('layout.installRestart')}
+                {installMode === 'download'
+                  ? t('layout.downloadDmg')
+                  : installing
+                    ? t('layout.downloading', { progress })
+                    : t('layout.installRestart')}
               </button>
               <button
                 onClick={() => setOpen(false)}

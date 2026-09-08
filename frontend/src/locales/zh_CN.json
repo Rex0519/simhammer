@@ -36,6 +36,8 @@
   "layout.saveNewRoute": "保存新路线",
   "layout.updateAvailable": "有可用更新",
   "layout.updateReady": "SimHammer v{version} 已可安装。",
+  "layout.downloadDmg": "下载 DMG",
+  "layout.updateManualMac": "SimHammer v{version} 已发布。下载 DMG 后把 SimHammer 拖进「应用程序」覆盖当前版本即可完成更新。",
   "layout.updateTo": "更新到 v{version}",
   "layout.downloading": "正在下载 {progress}%",
   "layout.installRestart": "安装并重启",

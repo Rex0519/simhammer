@@ -1,15 +1,30 @@
-function setupAutoUpdater(app, ipcMain, getMainWindow) {
+const RELEASES_URL = "https://github.com/Rex0519/simhammer/releases";
+
+// macOS cannot install an update in place unless the app is signed with a
+// Developer ID certificate (Squirrel.Mac validates the signature). This fork
+// ships unsigned macOS builds, so on darwin the "install" action opens the
+// release's DMG in the browser and the user drags the app over the old one.
+function dmgDownloadUrl(info) {
+  const dmg = (info?.files || []).map((f) => f.url).find((u) => /\.dmg$/i.test(u || ""));
+  if (!dmg || !info?.version) return `${RELEASES_URL}/latest`;
+  return `${RELEASES_URL}/download/v${info.version}/${encodeURIComponent(dmg)}`;
+}
+
+function setupAutoUpdater(app, ipcMain, getMainWindow, shell) {
   try {
     const { autoUpdater } = require("electron-updater");
     autoUpdater.autoDownload = false;
     autoUpdater.disableDifferentialDownload = true;
-    autoUpdater.allowPrerelease = app.getVersion().includes("-dev.");
+    const version = app.getVersion();
+    autoUpdater.allowPrerelease = version.includes("-dev.") || version.includes("-rex.");
 
     let availableUpdate = null;
+    let availableInfo = null;
 
     autoUpdater.on("update-available", (info) => {
       if (info.version !== app.getVersion()) {
         availableUpdate = { version: info.version };
+        availableInfo = info;
         getMainWindow()?.webContents.send("updater:update-available", info.version);
       }
     });
@@ -36,9 +51,17 @@ function setupAutoUpdater(app, ipcMain, getMainWindow) {
     });
 
     ipcMain.handle("updater:downloadAndInstall", async () => {
+      if (process.platform === "darwin") {
+        await shell.openExternal(dmgDownloadUrl(availableInfo));
+        return;
+      }
       await autoUpdater.downloadUpdate();
       setImmediate(() => autoUpdater.quitAndInstall(false, true));
     });
+
+    ipcMain.handle("updater:installMode", () =>
+      process.platform === "darwin" ? "download" : "inplace"
+    );
 
     setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 5000);
   } catch {
@@ -48,4 +71,5 @@ function setupAutoUpdater(app, ipcMain, getMainWindow) {
 
 module.exports = {
   setupAutoUpdater,
+  dmgDownloadUrl,
 };
