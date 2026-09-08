@@ -12,7 +12,10 @@ use crate::item_db;
 
 pub(super) async fn get_item_names(repo: web::Data<LocalizedNamesRepo>) -> HttpResponse {
     // One query; empty for every locale item-names.json already covers.
-    let overrides = repo.all_by_kind("item").await.unwrap_or_default();
+    let overrides = repo.all_by_kind("item").await.unwrap_or_else(|err| {
+        eprintln!("game_data: item name overrides read failed ({err}); using empty map");
+        HashMap::new()
+    });
     match item_db::item_names() {
         Some(names) => HttpResponse::Ok()
             .insert_header(("Cache-Control", "public, max-age=3600"))

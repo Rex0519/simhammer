@@ -320,6 +320,10 @@ function requestLocalizedName(kind: NameKind, id: number, locale: string) {
   if (pendingNameLocale && pendingNameLocale !== locale) flushLocalizedNames();
   pendingNameLocale = locale;
   pendingNameIds[kind].add(id);
+  // First-enqueue-wins: the timer is armed once and never reset by later
+  // enqueues, so the batch flushes a fixed 150 ms after the first miss
+  // rather than after the queue goes quiet. Intended — it bounds latency
+  // instead of letting a steady trickle of ids starve the flush.
   if (localizeTimer === null) {
     localizeTimer = setTimeout(flushLocalizedNames, LOCALIZE_DEBOUNCE_MS);
   }
@@ -340,12 +344,15 @@ function mergeLocalizedNames(
   return merged;
 }
 
-function flushLocalizedNames() {
+function flushLocalizedNames(forcedLocale?: string) {
   if (localizeTimer !== null) {
     clearTimeout(localizeTimer);
     localizeTimer = null;
   }
-  const locale = pendingNameLocale;
+  // Normally reads the shared locale, but a rescheduled leftover flush (below)
+  // passes its own captured locale so it can't be relabeled by a locale
+  // switch that lands on `pendingNameLocale` in between.
+  const locale = forcedLocale ?? pendingNameLocale;
   pendingNameLocale = null;
   const items = [...pendingNameIds.item];
   const spells = [...pendingNameIds.spell];
@@ -362,7 +369,7 @@ function flushLocalizedNames() {
     for (const id of leftoverItems) pendingNameIds.item.add(id);
     for (const id of leftoverSpells) pendingNameIds.spell.add(id);
     pendingNameLocale = locale;
-    localizeTimer = setTimeout(flushLocalizedNames, LOCALIZE_DEBOUNCE_MS);
+    localizeTimer = setTimeout(() => flushLocalizedNames(locale), LOCALIZE_DEBOUNCE_MS);
   }
 
   void fetch(`${API_URL}/api/item-names/localize`, {
@@ -373,10 +380,9 @@ function flushLocalizedNames() {
     .then((res) => (res.ok ? res.json() : null))
     .then((data: { items?: Record<string, string>; spells?: Record<string, string> } | null) => {
       if (!data) return;
-      const changed =
-        mergeLocalizedNames(itemNamesMap, data.items, locale) ||
-        mergeLocalizedNames(spellNamesMap, data.spells, locale);
-      if (changed) notifyItemNames();
+      const itemsChanged = mergeLocalizedNames(itemNamesMap, data.items, locale);
+      const spellsChanged = mergeLocalizedNames(spellNamesMap, data.spells, locale);
+      if (itemsChanged || spellsChanged) notifyItemNames();
     })
     .catch(() => {});
 }
