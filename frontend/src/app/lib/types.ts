@@ -230,8 +230,8 @@ export const CLASS_SPECS: Record<string, string[]> = {
   warlock: ['affliction', 'demonology', 'destruction'],
   monk: ['brewmaster', 'mistweaver', 'windwalker'],
   druid: ['balance', 'feral', 'guardian', 'restoration'],
-  demon_hunter: ['havoc', 'vengeance'],
-  demonhunter: ['havoc', 'vengeance'],
+  demon_hunter: ['havoc', 'vengeance', 'devourer'],
+  demonhunter: ['havoc', 'vengeance', 'devourer'],
   evoker: ['devastation', 'preservation', 'augmentation'],
 };
 
@@ -273,6 +273,7 @@ export const SPEC_ID_TO_NAME: Record<number, string> = {
   105: 'restoration',
   577: 'havoc',
   581: 'vengeance',
+  1480: 'devourer',
   1467: 'devastation',
   1468: 'preservation',
   1473: 'augmentation',

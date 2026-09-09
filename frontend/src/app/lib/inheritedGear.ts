@@ -50,7 +50,8 @@ const DUAL_WIELD_SPECS: ReadonlySet<string> = new Set([
   'brewmaster',
   'windwalker', // monk
   'havoc',
-  'vengeance', // demon hunter
+  'vengeance',
+  'devourer', // demon hunter
 ]);
 
 function canDualWield(spec: string): boolean {
