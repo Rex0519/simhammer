@@ -250,6 +250,15 @@ echo "==> Fetching localized game names..."
 node /app/fetch-localized-names.mjs zh_CN "$DATA_FULL_DIR" \
     || echo "    WARNING: localized name fetch failed; zh_CN game names fall back to English."
 
+# Per-spec recommended consumables from SimulationCraft's season profiles; the
+# backend applies these when the user picks none. Non-fatal: a GitHub outage
+# must not stop the container from starting, sims just run without consumables
+# until the user picks them.
+echo "==> Fetching SimC consumable recommendations..."
+node /app/fetch-season-consumables.mjs "$DATA_FULL_DIR" \
+    --season-config=/app/default_season_config.json \
+    || echo "    WARNING: consumable recommendation fetch failed; no default consumables will be applied."
+
 echo "==> Compacting game data..."
 node /app/compact-data.js "$DATA_FULL_DIR" "$DATA_DIR"
 

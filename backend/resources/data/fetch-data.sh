@@ -48,4 +48,12 @@ echo "Fetching zh_CN localized game names..."
 node "$SCRIPT_DIR/../../scripts/fetch-localized-names.mjs" zh_CN "$OUT_DIR" \
     || echo "WARNING: localized name fetch failed; zh_CN game names will fall back to English."
 
+# Per-spec recommended consumables from SimulationCraft's season profiles. The
+# backend applies these when the user has not picked a consumable; without the
+# file sims run with no consumables at all. Non-fatal: a GitHub outage must not
+# abort a data refresh.
+echo "Fetching SimC season consumable recommendations..."
+node "$SCRIPT_DIR/../../scripts/fetch-season-consumables.mjs" "$OUT_DIR" \
+    || echo "WARNING: consumable recommendation fetch failed; no default consumables will be applied."
+
 echo "Done."

@@ -130,6 +130,17 @@ jobs:
             echo "::warning title=Localized names::wago.tools fetch FAILED — this build ships WITHOUT zh_CN game names (spells, dungeons, bosses, currencies). Re-run once wago.tools is back."
           fi
 
+      # Per-spec recommended consumables from SimulationCraft's season profiles.
+      # Non-fatal like the localized names: a GitHub outage must not block a
+      # release, the build just ships without default consumables and users pick
+      # them manually.
+      - name: Fetch SimC consumable recommendations
+        shell: bash
+        run: |
+          if ! node backend/scripts/fetch-season-consumables.mjs backend/resources/data-full; then
+            echo "::warning title=Season consumables::SimC profile fetch FAILED — this build ships WITHOUT recommended consumables; sims default to no consumables unless the user picks them. Re-run once GitHub is back."
+          fi
+
       - name: Compact game data
         shell: bash
         run: node backend/scripts/compact-data.js backend/resources/data-full backend/resources/data

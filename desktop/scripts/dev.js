@@ -102,6 +102,25 @@ function fetchLocalizedNames(dataDir) {
   }
 }
 
+/**
+ * Per-spec recommended consumables from SimulationCraft's season profiles.
+ * Without it the backend has no default consumables to apply and a user who
+ * never touches the dropdowns sims unbuffed. Non-fatal: a GitHub outage must
+ * not block `npm run dev`.
+ */
+function fetchSeasonConsumables(dataDir) {
+  try {
+    console.log("[dev] Fetching SimC season consumable recommendations...");
+    execFileSync(
+      process.execPath,
+      [path.join(BACKEND_DIR, "scripts", "fetch-season-consumables.mjs"), dataDir],
+      { stdio: "inherit", timeout: 5 * 60 * 1000 }
+    );
+  } catch {
+    console.log("[dev] Consumable recommendation fetch failed; no default consumables applied.");
+  }
+}
+
 async function fetchGameData(dataDir) {
   const BASE_URL = "https://www.raidbots.com/static/data/live";
 
@@ -209,6 +228,11 @@ async function ensureResources() {
   // feature (or a run where wago was down) would otherwise never get a bundle.
   if (!fs.existsSync(path.join(dataDir, "localized-names.zh_CN.json"))) {
     fetchLocalizedNames(dataDir);
+  }
+
+  // Gated on its own file for the same reason as the localized-name bundle.
+  if (!fs.existsSync(path.join(dataDir, "season-consumables.json"))) {
+    fetchSeasonConsumables(dataDir);
   }
 
   // season-config.json is hand-maintained in core/ but the backend reads it from
