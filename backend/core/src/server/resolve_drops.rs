@@ -66,6 +66,7 @@ pub(super) fn drop_to_raw_item(drop: &Value) -> Option<RawParsedItem> {
         gem_id: 0,
         origin: ItemOrigin::Bags,
         manual: false,
+        source_item_id: 0,
     })
 }
 

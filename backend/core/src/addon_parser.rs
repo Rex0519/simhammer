@@ -40,6 +40,7 @@ struct ItemProps {
     bonus_ids: Vec<u64>,
     enchant_id: u64,
     gem_id: u64,
+    source_item_id: u64,
 }
 
 fn parse_item_props(item_str: &str) -> ItemProps {
@@ -50,6 +51,7 @@ fn parse_item_props(item_str: &str) -> ItemProps {
         bonus_ids: Vec::new(),
         enchant_id: 0,
         gem_id: 0,
+        source_item_id: 0,
     };
 
     if let Some(caps) = RE_ITEM_ID.captures(item_str) {
@@ -70,6 +72,7 @@ fn parse_item_props(item_str: &str) -> ItemProps {
     if let Some(caps) = RE_GEM_ID.captures(item_str) {
         props.gem_id = caps[1].parse().unwrap_or(0);
     }
+    props.source_item_id = crate::simc_string::extract_redirected_base_stats(item_str);
     if let Some(caps) = RE_NAME.captures(item_str) {
         props.name = class_data::title_case(&caps[1].replace('_', " "));
     }
@@ -172,6 +175,7 @@ pub fn parse_simc_input(simc_input: &str) -> ParseResult {
                     gem_id: props.gem_id,
                     origin: ItemOrigin::Bags,
                     manual: true,
+                    source_item_id: props.source_item_id,
                 });
                 continue;
             }
@@ -210,6 +214,7 @@ pub fn parse_simc_input(simc_input: &str) -> ParseResult {
                     gem_id: props.gem_id,
                     origin,
                     manual: false,
+                    source_item_id: props.source_item_id,
                 });
             } else if let Some(caps) = header_re.captures(stripped) {
                 pending_name = caps[1].to_string();
@@ -278,6 +283,7 @@ pub fn parse_simc_input(simc_input: &str) -> ParseResult {
                     gem_id: props.gem_id,
                     origin: ItemOrigin::Equipped,
                     manual: false,
+                    source_item_id: props.source_item_id,
                 });
             }
             pending_label.clear();
