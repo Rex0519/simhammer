@@ -5,6 +5,7 @@ import { useSimContext } from './SimContext';
 import { DEFAULT_EXPANSION_OPTIONS, DEFAULT_RAID_BUFFS } from '../../lib/sim-config-defaults';
 import { useLanguage } from '../../lib/i18n';
 import { API_URL, apiUrl, fetchJsonOr } from '../../lib/api';
+import { parseCharacterInfo } from '../../lib/character';
 
 interface ConsumableEntry {
   value: string;
@@ -19,16 +20,27 @@ interface ConsumableEntry {
 // Current expansion for Midnight
 const CURRENT_EXPANSION = 11;
 
+/** Dropdown value for "let the backend apply SimC's own recommendation". It is
+ *  persisted as `''` (what `stringRecord` keeps) so an existing config — and an
+ *  existing `simhammer_consumables` blob — reads as recommended, not as the old
+ *  "SimC Default" that silently sent no consumable at all. */
+const RECOMMENDED = 'recommended';
+
+/** Dropdown value for "no consumable in this slot". */
+const DISABLED = 'disabled';
+
+function isRecommended(value: string | undefined): boolean {
+  return !value || value === RECOMMENDED;
+}
+
 function buildOptions(
   data: ConsumableEntry[],
-  currentExpansion: number
+  currentExpansion: number,
+  base: { value: string; label: string }[]
 ): { value: string; label: string }[] {
   const current = data.filter((d) => d.expansion === currentExpansion);
   const previous = data.filter((d) => d.expansion < currentExpansion);
-  const options: { value: string; label: string }[] = [
-    { value: '', label: 'SimC Default' },
-    { value: 'disabled', label: 'None' },
-  ];
+  const options: { value: string; label: string }[] = [...base];
   // Add current expansion items first (highest quality only per unique base name)
   const seen = new Set<string>();
   for (const item of current) {
@@ -84,9 +96,20 @@ interface ConsumablesApiResponse {
   weapon_runes: ConsumableEntry[];
 }
 
-const DEFAULT_OPTIONS = { value: '', label: 'SimC Default' };
-const NONE_OPTION = { value: 'disabled', label: 'None' };
-const EMPTY_OPTIONS = [DEFAULT_OPTIONS, NONE_OPTION];
+/** Request key -> the key the backend's recommendation map uses. */
+const RECOMMENDED_KEYS: Record<string, string> = {
+  food: 'food',
+  flask: 'flask',
+  potion: 'potion',
+  augmentation: 'augmentation',
+  weapon_rune: 'temporary_enchant',
+};
+
+/** `main_hand:oil_2` / `main_hand:oil_2/off_hand:oil_2` -> `oil_2`, so a weapon
+ *  rune recommendation can be matched against the dropdown's own values. */
+function weaponRuneValue(recommended: string): string {
+  return recommended.split('/')[0].split(':').pop() ?? recommended;
+}
 
 export default function RaidBuffsConsumables() {
   const { t } = useLanguage();
@@ -97,9 +120,13 @@ export default function RaidBuffsConsumables() {
     setConsumables,
     expansionOptions,
     setExpansionOptions,
+    simcInput,
   } = useSimContext();
 
   const [apiData, setApiData] = useState<ConsumablesApiResponse | null>(null);
+  // What "Recommended" resolves to for this character, so the hint can name the
+  // item instead of leaving the default opaque. `null` = this spec has none.
+  const [recommended, setRecommended] = useState<Record<string, string> | null>(null);
 
   useEffect(() => {
     fetchJsonOr<ConsumablesApiResponse | null>(apiUrl('/api/consumables'), null).then(
@@ -107,30 +134,68 @@ export default function RaidBuffsConsumables() {
     );
   }, []);
 
+  const character = useMemo(() => parseCharacterInfo(simcInput), [simcInput]);
+  const className = character?.className ?? '';
+  const spec = character?.spec ?? '';
+
+  useEffect(() => {
+    if (!className || !spec || spec === 'unknown') {
+      setRecommended(null);
+      return;
+    }
+    let active = true;
+    fetchJsonOr<Record<string, string> | null>(
+      apiUrl(`/api/consumables/recommended/${className}/${spec}`),
+      null
+    ).then((d) => {
+      if (active) setRecommended(d);
+    });
+    return () => {
+      active = false;
+    };
+  }, [className, spec]);
+
+  const baseOptions = useMemo(
+    () => [
+      { value: RECOMMENDED, label: t('config.consumableRecommended') },
+      { value: DISABLED, label: t('config.consumableNone') },
+    ],
+    [t]
+  );
+
   const consumableOptions = useMemo(() => {
     if (!apiData)
       return {
-        food: EMPTY_OPTIONS,
-        flask: EMPTY_OPTIONS,
-        potion: EMPTY_OPTIONS,
-        augmentation: EMPTY_OPTIONS,
-        weapon_rune: EMPTY_OPTIONS,
+        food: baseOptions,
+        flask: baseOptions,
+        potion: baseOptions,
+        augmentation: baseOptions,
+        weapon_rune: baseOptions,
       };
     return {
-      food: buildOptions(apiData.foods, CURRENT_EXPANSION),
-      flask: buildOptions(apiData.flasks, CURRENT_EXPANSION),
-      potion: buildOptions(apiData.potions, CURRENT_EXPANSION),
-      augmentation: buildOptions(apiData.augments, CURRENT_EXPANSION),
-      weapon_rune: buildOptions(apiData.weapon_runes, CURRENT_EXPANSION),
+      food: buildOptions(apiData.foods, CURRENT_EXPANSION, baseOptions),
+      flask: buildOptions(apiData.flasks, CURRENT_EXPANSION, baseOptions),
+      potion: buildOptions(apiData.potions, CURRENT_EXPANSION, baseOptions),
+      augmentation: buildOptions(apiData.augments, CURRENT_EXPANSION, baseOptions),
+      weapon_rune: buildOptions(apiData.weapon_runes, CURRENT_EXPANSION, baseOptions),
     };
-  }, [apiData]);
+  }, [apiData, baseOptions]);
+
+  /** The readable name of the recommendation for `key`, or `null` when this
+   *  spec has none (SimC ships no season profile for it). */
+  function recommendedLabel(key: string, options: { value: string; label: string }[]) {
+    const raw = recommended?.[RECOMMENDED_KEYS[key]];
+    if (!raw) return null;
+    const value = key === 'weapon_rune' ? weaponRuneValue(raw) : raw;
+    return options.find((o) => o.value === value)?.label ?? value;
+  }
 
   const allBuffsOn = Object.values(raidBuffs).every(Boolean);
   const allBuffsOff = Object.values(raidBuffs).every((v) => !v);
 
   const isDefault =
     allBuffsOn &&
-    Object.values(consumables).every((v) => !v) &&
+    Object.values(consumables).every(isRecommended) &&
     Object.values(expansionOptions).every(Boolean);
 
   function toggleBuff(key: string) {
@@ -144,7 +209,10 @@ export default function RaidBuffsConsumables() {
   }
 
   function setConsumable(key: string, value: string) {
-    setConsumables({ ...consumables, [key]: value });
+    // Persist "recommended" as `''`: `stringRecord` drops empty values, so the
+    // key stays absent and the sim payload never carries it — the backend's
+    // own default is what resolves it.
+    setConsumables({ ...consumables, [key]: value === RECOMMENDED ? '' : value });
   }
 
   function toggleExpansionOption(key: string) {
@@ -224,7 +292,7 @@ export default function RaidBuffsConsumables() {
                 {CONSUMABLE_LABELS[key]}
               </span>
               <select
-                value={consumables[key] || ''}
+                value={isRecommended(consumables[key]) ? RECOMMENDED : consumables[key]}
                 onChange={(e) => setConsumable(key, e.target.value)}
                 className="w-full rounded-md bg-surface-container-high/50 px-2 py-1.5 text-[11px] text-on-surface ring-1 ring-outline-variant/10 focus:outline-none focus:ring-1 focus:ring-gold/30"
               >
@@ -234,6 +302,11 @@ export default function RaidBuffsConsumables() {
                   </option>
                 ))}
               </select>
+              {isRecommended(consumables[key]) && (
+                <span className="block text-[10px] leading-tight text-on-surface-variant/50">
+                  {recommendedLabel(key, options) ?? t('config.consumableRecommendedUnknown')}
+                </span>
+              )}
             </div>
           ))}
         </div>

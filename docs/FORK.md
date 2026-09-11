@@ -49,6 +49,22 @@ installed apps check these releases (5 s after launch and on demand).
   `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`) to the repository — the
   workflows already use them when present.
 
+## Recommended consumables
+
+The consumable dropdowns default to **Recommended (SimC profile)** rather than
+to the old "SimC Default", which sent nothing — and SimulationCraft applies no
+consumable at all when a profile carries no `flask=`/`food=`/`potion=`/
+`augmentation=`/`temporary_enchant=` line, so the untouched default used to sim
+roughly 1.3% low. `backend/scripts/fetch-season-consumables.mjs` scrapes those
+five lines out of SimC's own season profiles (the `profiles/<simcProfilesDir>`
+directory named in `backend/core/season-config.json`, on the `midnight` branch)
+into `season-consumables.json`, which the backend loads per
+`<class>/<spec>`. When a request names a consumable explicitly that pick wins;
+`disabled` ("None") suppresses the slot entirely; a missing key or the value
+`recommended` resolves to the profile's item, or to nothing when SimC ships no
+profile for that spec. `GET /api/consumables/recommended/{class}/{spec}` is
+what the UI reads to name the resolved item under each dropdown.
+
 ## Upstream sync
 
 `sync-upstream.yml` (Mondays 03:17 UTC, or *Run workflow*) fast-forwards
