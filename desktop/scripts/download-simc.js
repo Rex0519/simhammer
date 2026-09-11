@@ -15,54 +15,119 @@ const PLATFORM_ASSETS = {
 const BINARY_NAME = process.platform === "win32" ? "simc.exe" : "simc";
 
 // ── HTTP helpers ────────────────────────────────────────────────
+//
+// Inside the Electron main process we go through Electron's `net` module so
+// downloads honour the system proxy (Clash, V2Ray, corporate proxies …) exactly
+// like the renderer does. Plain Node `https` (the fallback used by dev.js and
+// CLI runs) bypasses the system proxy, which made GitHub release downloads
+// slow or flaky for users behind a proxy. Every response stream also gets an
+// idle timeout so a stalled connection fails instead of hanging forever.
 
-function httpGet(url) {
+const IDLE_TIMEOUT_MS = 30_000;
+const DOWNLOAD_RETRIES = 2;
+
+function electronNet() {
+  if (!process.versions || !process.versions.electron) return null;
+  try {
+    const { net, app } = require("electron");
+    if (net && typeof net.request === "function" && app && app.isReady()) return net;
+  } catch {
+    // not running inside Electron's main process
+  }
+  return null;
+}
+
+/**
+ * Open a GET request and resolve with the final (post-redirect) response
+ * stream. Resolves `{ statusCode, headers, stream, abort }`.
+ */
+function openRequest(url) {
+  const net = electronNet();
+  if (net) {
+    return new Promise((resolve, reject) => {
+      const req = net.request({ url, method: "GET", redirect: "follow" });
+      req.setHeader("User-Agent", "SimHammer");
+      req.on("response", (res) => {
+        resolve({
+          statusCode: res.statusCode,
+          headers: res.headers,
+          stream: res,
+          abort: () => req.abort(),
+        });
+      });
+      req.on("error", reject);
+      req.end();
+    });
+  }
+
   return new Promise((resolve, reject) => {
-    https
-      .get(url, { headers: { "User-Agent": "SimHammer" } }, (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          return httpGet(res.headers.location).then(resolve, reject);
+    const follow = (requestUrl, hops) => {
+      const req = https.get(requestUrl, { headers: { "User-Agent": "SimHammer" } }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && hops < 5) {
+          res.resume();
+          return follow(res.headers.location, hops + 1);
         }
-        if (res.statusCode !== 200) {
-          return reject(new Error(`HTTP ${res.statusCode} for ${url}`));
-        }
-        const chunks = [];
-        res.on("data", (c) => chunks.push(c));
-        res.on("end", () => resolve(Buffer.concat(chunks)));
-        res.on("error", reject);
-      })
-      .on("error", reject);
+        resolve({
+          statusCode: res.statusCode,
+          headers: res.headers,
+          stream: res,
+          abort: () => req.destroy(),
+        });
+      });
+      req.on("error", reject);
+    };
+    follow(url, 0);
   });
 }
 
-function httpGetWithProgress(url, onProgress) {
+/** Read a whole response into a Buffer, failing when no data arrives for IDLE_TIMEOUT_MS. */
+function readBody(url, res, onProgress) {
   return new Promise((resolve, reject) => {
-    const request = (requestUrl) => {
-      https
-        .get(requestUrl, { headers: { "User-Agent": "SimHammer" } }, (res) => {
-          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-            return request(res.headers.location);
-          }
-          if (res.statusCode !== 200) {
-            return reject(new Error(`HTTP ${res.statusCode} for ${requestUrl}`));
-          }
-          const total = parseInt(res.headers["content-length"] || "0", 10);
-          let received = 0;
-          const chunks = [];
-          res.on("data", (chunk) => {
-            chunks.push(chunk);
-            received += chunk.length;
-            if (onProgress && total > 0) {
-              onProgress(received / total);
-            }
-          });
-          res.on("end", () => resolve(Buffer.concat(chunks)));
-          res.on("error", reject);
-        })
-        .on("error", reject);
+    if (res.statusCode !== 200) {
+      res.abort();
+      return reject(new Error(`HTTP ${res.statusCode} for ${url}`));
+    }
+    const lengthHeader = res.headers["content-length"];
+    const total = parseInt(Array.isArray(lengthHeader) ? lengthHeader[0] : lengthHeader || "0", 10);
+    let received = 0;
+    const chunks = [];
+    let timer = null;
+    const arm = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        res.abort();
+        reject(new Error(`Download stalled for ${IDLE_TIMEOUT_MS / 1000}s: ${url}`));
+      }, IDLE_TIMEOUT_MS);
     };
-    request(url);
+    arm();
+    res.stream.on("data", (chunk) => {
+      chunks.push(chunk);
+      received += chunk.length;
+      arm();
+      if (onProgress && total > 0) onProgress(received / total);
+    });
+    res.stream.on("end", () => {
+      clearTimeout(timer);
+      if (total > 0 && received !== total) {
+        return reject(new Error(`Incomplete download (${received}/${total} bytes): ${url}`));
+      }
+      resolve(Buffer.concat(chunks));
+    });
+    res.stream.on("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
   });
+}
+
+async function httpGet(url) {
+  const res = await openRequest(url);
+  return readBody(url, res);
+}
+
+async function httpGetWithProgress(url, onProgress) {
+  const res = await openRequest(url);
+  return readBody(url, res, onProgress);
 }
 
 // ── GitHub release queries ──────────────────────────────────────
@@ -215,6 +280,24 @@ function removeVersion(baseDir, tag) {
  * @param {(progress: number) => void} [onProgress]
  * @returns {Promise<string>} Path to the simc binary
  */
+async function downloadWithRetry(url, onProgress) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= DOWNLOAD_RETRIES + 1; attempt++) {
+    try {
+      return await httpGetWithProgress(url, onProgress);
+    } catch (err) {
+      lastError = err;
+      // A 4xx answer will not change on retry (missing asset, bad tag).
+      if (/^HTTP 4\d\d /.test(err.message)) break;
+      if (attempt <= DOWNLOAD_RETRIES) {
+        console.warn(`[simc] Download attempt ${attempt} failed (${err.message}); retrying…`);
+        if (onProgress) onProgress(0);
+      }
+    }
+  }
+  throw lastError;
+}
+
 async function installVersion(baseDir, release, onProgress) {
   const versionDir = path.join(baseDir, release.tag);
   fs.mkdirSync(versionDir, { recursive: true });
@@ -223,7 +306,7 @@ async function installVersion(baseDir, release, onProgress) {
   const tmpFile = path.join(os.tmpdir(), `simc-download-${Date.now()}-${asset}`);
 
   try {
-    const data = await httpGetWithProgress(release.assetUrl, onProgress);
+    const data = await downloadWithRetry(release.assetUrl, onProgress);
     fs.writeFileSync(tmpFile, data);
 
     if (asset.endsWith(".zip")) {
@@ -256,6 +339,13 @@ async function installVersion(baseDir, release, onProgress) {
     }
 
     return binaryPath;
+  } catch (err) {
+    // Never leave a half-installed version directory behind: it would show up
+    // as an unusable entry and block a clean retry.
+    if (!fs.existsSync(path.join(versionDir, BINARY_NAME))) {
+      try { fs.rmSync(versionDir, { recursive: true, force: true }); } catch {}
+    }
+    throw err;
   } finally {
     try { fs.unlinkSync(tmpFile); } catch {}
   }
