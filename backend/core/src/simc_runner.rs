@@ -570,6 +570,45 @@ pub fn build_simc_input_from_options(simc_input: &str, options: &Value) -> Strin
     ))
 }
 
+/// Request value meaning "use SimulationCraft's own recommendation for this
+/// spec" — the default the consumable dropdowns ship with.
+const CONSUMABLE_RECOMMENDED: &str = "recommended";
+
+/// Request value meaning "no consumable in this slot at all".
+const CONSUMABLE_DISABLED: &str = "disabled";
+
+/// The consumable keys the request uses, paired with the key they carry in
+/// `season-consumables.json` / a SimC profile.
+const CONSUMABLE_KEYS: [(&str, &str); 5] = [
+    ("flask", "flask"),
+    ("food", "food"),
+    ("potion", "potion"),
+    ("augmentation", "augmentation"),
+    ("weapon_rune", "temporary_enchant"),
+];
+
+/// The `<class>` of the profile's `<class>="Name"` line, for the recommendation
+/// lookup. SimC writes it as the actor's first line.
+fn actor_class(simc_input: &str) -> Option<&str> {
+    simc_input.lines().find_map(|line| {
+        let trimmed = line.trim();
+        let idx = trimmed.find("=\"")?;
+        let class = &trimmed[..idx];
+        (!class.is_empty() && class.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
+            .then_some(class)
+    })
+}
+
+/// The profile's `spec=` value. Any spec override has already been applied to
+/// `simc_input` by `preprocess_simc_input`, so this is the spec that will sim.
+fn actor_spec(simc_input: &str) -> Option<&str> {
+    simc_input
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("spec="))
+        .map(str::trim)
+        .filter(|spec| !spec.is_empty())
+}
+
 /// Build the full simc input file with all options inline (matching Raidbots format).
 /// Injects consumables, expansion options after the base actor, and appends a
 /// `# Simulation Options` section at the end with overrides, sim config, etc.
@@ -617,27 +656,54 @@ pub fn build_full_simc_input(b: &SimcInputBuild) -> String {
 
     // Consumables
     base_actor_lines.push("\n# Consumables".to_string());
+    // Explicit picks first, in request order, so keys outside the five the UI
+    // offers still pass through untouched.
+    let mut has_weapon_rune = false;
     if let Some(cons) = consumables {
         for (key, val) in cons {
             if let Some(v) = val.as_str() {
-                if v.is_empty() {
+                if v.is_empty() || v == CONSUMABLE_RECOMMENDED || v == CONSUMABLE_DISABLED {
                     continue;
                 }
                 if key == "weapon_rune" {
                     base_actor_lines.push(format!("temporary_enchant=main_hand:{}", v));
+                    has_weapon_rune = true;
                 } else {
                     base_actor_lines.push(format!("{}={}", key, v));
                 }
             }
         }
     }
+    // Then SimC's own recommendation for every key the request left open —
+    // without this a user who never opened the dropdowns sims unbuffed, because
+    // SimC applies no consumable at all when the profile carries no line.
+    let recommended = actor_class(simc_input)
+        .zip(actor_spec(simc_input))
+        .and_then(|(class, spec)| crate::item_db::recommended_consumables(class, spec));
+    for (key, simc_key) in CONSUMABLE_KEYS {
+        let requested = consumables
+            .and_then(|c| c.get(key))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        // `disabled` is the UI's "None"; anything else non-empty was emitted above.
+        if requested == CONSUMABLE_DISABLED
+            || (!requested.is_empty() && requested != CONSUMABLE_RECOMMENDED)
+        {
+            continue;
+        }
+        if let Some(value) = recommended.and_then(|r| r.get(simc_key)) {
+            // Recommended values are verbatim SimC syntax, `temporary_enchant`
+            // included (`main_hand:thalassian_phoenix_oil_2`).
+            base_actor_lines.push(format!("{}={}", simc_key, value));
+            if key == "weapon_rune" {
+                has_weapon_rune = true;
+            }
+        }
+    }
 
     // Expansion options
     base_actor_lines.push("\n# Expansion Options".to_string());
-    // Weapon rune: if not set via consumables, clear it
-    let has_weapon_rune = consumables
-        .map(|c| c.contains_key("weapon_rune"))
-        .unwrap_or(false);
+    // Weapon rune: if nothing set one, clear whatever the addon export carried.
     if !has_weapon_rune {
         base_actor_lines.push("temporary_enchant=".to_string());
     }
@@ -1762,6 +1828,122 @@ mod tests {
 
     fn keep_set(names: &[&str]) -> HashSet<String> {
         names.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// Base actor block of a paladin/retribution profile with the given
+    /// `consumables` request object, for the recommended-consumable tests.
+    fn ret_paladin_input(consumables: Value) -> String {
+        crate::test_support::ensure_game_data_loaded();
+        let options = json!({ "consumables": consumables });
+        build_full_simc_input(&SimcInputBuild::new(
+            "paladin=\"Tester\"\nspec=retribution\nprofileset.\"Combo 1\"+=head=id=1",
+            &options,
+            "Patchwerk",
+            0.1,
+            10_000,
+            1,
+            300,
+            false,
+            true,
+            false,
+        ))
+    }
+
+    /// The recommendation the shipped season-consumables.json carries for
+    /// paladin/retribution — asserted against rather than a literal item name,
+    /// so a data refresh does not break these tests.
+    fn ret_recommendation(key: &str) -> String {
+        crate::item_db::recommended_consumables("paladin", "retribution")
+            .expect("ret paladin has a SimC profile recommendation")
+            .get(key)
+            .unwrap_or_else(|| panic!("ret paladin recommendation has no {}", key))
+            .clone()
+    }
+
+    // Guards the whole point of the feature: a request that names no consumable
+    // at all used to sim completely unbuffed (SimC applies none without the
+    // lines), which measured ~1.3% low against a consumed profile.
+    #[test]
+    fn missing_consumable_keys_fall_back_to_the_simc_recommendation() {
+        let input = ret_paladin_input(json!({}));
+        for key in ["flask", "food", "potion", "augmentation"] {
+            assert!(
+                input.contains(&format!("{}={}", key, ret_recommendation(key))),
+                "missing {} recommendation in:\n{}",
+                key,
+                input
+            );
+        }
+        assert!(input.contains(&format!(
+            "temporary_enchant={}",
+            ret_recommendation("temporary_enchant")
+        )));
+        // The recommendation emits a real weapon rune, so the blank line that
+        // clears it must not follow.
+        assert!(!input.contains("\ntemporary_enchant=\n"));
+    }
+
+    // Guards the value `recommended` (the new dropdown default) resolving the
+    // same way an absent key does — stored `""` normalizes to it in the UI.
+    #[test]
+    fn explicit_recommended_resolves_to_the_simc_recommendation() {
+        let input =
+            ret_paladin_input(json!({ "flask": "recommended", "weapon_rune": "recommended" }));
+        assert!(input.contains(&format!("flask={}", ret_recommendation("flask"))));
+        assert!(input.contains(&format!(
+            "temporary_enchant={}",
+            ret_recommendation("temporary_enchant")
+        )));
+    }
+
+    // Guards user intent beating the default: a picked consumable must survive.
+    #[test]
+    fn explicit_consumable_beats_the_recommendation() {
+        let input = ret_paladin_input(json!({ "flask": "flask_of_tests", "weapon_rune": "rune" }));
+        assert!(input.contains("flask=flask_of_tests"));
+        assert!(!input.contains(&format!("flask={}", ret_recommendation("flask"))));
+        assert!(input.contains("temporary_enchant=main_hand:rune"));
+        // Unpicked keys still get their recommendation.
+        assert!(input.contains(&format!("food={}", ret_recommendation("food"))));
+    }
+
+    // Guards the "None" option: `disabled` must suppress the key entirely, not
+    // fall through to the recommendation.
+    #[test]
+    fn disabled_consumable_suppresses_the_recommendation() {
+        let input = ret_paladin_input(json!({ "flask": "disabled", "weapon_rune": "disabled" }));
+        assert!(!input.contains("flask="));
+        assert!(!input.contains(&format!(
+            "temporary_enchant={}",
+            ret_recommendation("temporary_enchant")
+        )));
+        // Weapon rune off keeps the blank line that clears the addon's rune.
+        assert!(input.contains("\ntemporary_enchant=\n"));
+        assert!(input.contains(&format!("food={}", ret_recommendation("food"))));
+    }
+
+    // Guards a spec SimC ships no profile for (and the pre-feature behaviour):
+    // no recommendation means no consumable lines, blank weapon rune included.
+    #[test]
+    fn unknown_spec_emits_no_consumables() {
+        crate::test_support::ensure_game_data_loaded();
+        let options = json!({ "consumables": {} });
+        let input = build_full_simc_input(&SimcInputBuild::new(
+            "druid=\"Tester\"\nspec=balance\nprofileset.\"Combo 1\"+=head=id=1",
+            &options,
+            "Patchwerk",
+            0.1,
+            10_000,
+            1,
+            300,
+            false,
+            true,
+            false,
+        ));
+        assert!(!input.contains("flask="));
+        assert!(!input.contains("food="));
+        assert!(!input.contains("augmentation="));
+        assert!(input.contains("\ntemporary_enchant=\n"));
     }
 
     #[test]

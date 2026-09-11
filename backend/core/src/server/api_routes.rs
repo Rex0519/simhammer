@@ -76,6 +76,10 @@ pub(super) fn configure(cfg: &mut web::ServiceConfig) {
             web::get().to(game_data_handlers::list_consumables),
         )
         .route(
+            "/api/consumables/recommended/{class}/{spec}",
+            web::get().to(game_data_handlers::get_recommended_consumables),
+        )
+        .route(
             "/api/upgrade-compare/prepare",
             web::post().to(upgrade_compare::get_upgrade_compare_prepare),
         )

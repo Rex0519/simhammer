@@ -203,6 +203,20 @@ pub(super) async fn list_consumables() -> HttpResponse {
         .json(result)
 }
 
+/// `GET /api/consumables/recommended/{class}/{spec}` — SimulationCraft's own
+/// consumables for a spec, so the UI can name what "Recommended" resolves to.
+/// 404 when SimC ships no season profile for that spec.
+pub(super) async fn get_recommended_consumables(path: web::Path<(String, String)>) -> HttpResponse {
+    let (class, spec) = path.into_inner();
+    match item_db::recommended_consumables(&class.to_lowercase(), &spec.to_lowercase()) {
+        Some(consumables) => HttpResponse::Ok()
+            .insert_header(("Cache-Control", "public, max-age=3600"))
+            .json(consumables),
+        None => HttpResponse::NotFound()
+            .json(json!({ "error": format!("no recommended consumables for {}/{}", class, spec) })),
+    }
+}
+
 pub(super) async fn get_max_upgrade_ilevels(body: web::Json<Vec<Value>>) -> HttpResponse {
     let mut results: HashMap<String, u64> = HashMap::new();
     for item in body.iter().take(200) {
