@@ -2494,6 +2494,19 @@ mod tests {
         assert_eq!(result["head"].len(), 1);
     }
 
+    // ---- recommended_consumables ----
+
+    // Guards the 404 branch of GET /api/consumables/recommended/{class}/{spec}:
+    // SimC ships no profile for every spec, and the accessor must say so with
+    // None rather than an empty map the handler would answer 200 with.
+    #[test]
+    fn recommended_consumables_unknown_spec_is_none() {
+        ensure_game_data_loaded();
+        assert!(recommended_consumables("paladin", "retribution").is_some());
+        assert!(recommended_consumables("paladin", "no_such_spec").is_none());
+        assert!(recommended_consumables("no_such_class", "retribution").is_none());
+    }
+
     // ---- upgrade_bonus_ids_to_max ----
 
     #[test]

@@ -67,6 +67,13 @@ jobs:
           # fall back to the crate-root copy and mask a broken staging step.
           cp ../../core/season-config.json ./season-config.json
 
+      # Fail-loud here, unlike the release build: the consumable unit tests
+      # assert against this file's real contents, so a missing fetch would turn
+      # a data problem into an unexplained test failure.
+      - name: Fetch SimC consumable recommendations
+        working-directory: .
+        run: node backend/scripts/fetch-season-consumables.mjs backend/resources/data
+
       - name: Compact game data
         working-directory: .
         run: node backend/scripts/compact-data.js backend/resources/data backend/resources/data-compacted

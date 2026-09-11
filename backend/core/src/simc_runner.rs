@@ -1853,8 +1853,16 @@ mod tests {
     /// paladin/retribution — asserted against rather than a literal item name,
     /// so a data refresh does not break these tests.
     fn ret_recommendation(key: &str) -> String {
-        crate::item_db::recommended_consumables("paladin", "retribution")
-            .expect("ret paladin has a SimC profile recommendation")
+        let recommended = crate::item_db::recommended_consumables("paladin", "retribution");
+        assert!(
+            recommended.is_some(),
+            "missing test fixture season-consumables.json — run `node \
+             backend/scripts/fetch-season-consumables.mjs backend/resources/data && node \
+             backend/scripts/compact-data.js backend/resources/data \
+             backend/resources/data-compacted` first"
+        );
+        recommended
+            .unwrap()
             .get(key)
             .unwrap_or_else(|| panic!("ret paladin recommendation has no {}", key))
             .clone()

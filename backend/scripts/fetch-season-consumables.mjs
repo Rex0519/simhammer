@@ -143,7 +143,10 @@ async function main() {
   const profiles = await listProfiles(profilesDir, branch);
   console.log(`  ${profiles.length} profile files`);
 
-  const specs = {};
+  // Parse every profile first: one spec key is usually covered by several files
+  // (the base profile plus one per hero tree), and which of them wins must not
+  // depend on the order GitHub lists them in.
+  const byspec = new Map();
   for (const profile of profiles) {
     const { className, spec, consumables } = parseProfile(await fetchText(profile.url));
     if (!className || !spec) {
@@ -151,9 +154,34 @@ async function main() {
       continue;
     }
     const key = `${className}/${spec}`;
-    // Hero-talent variants of one spec carry identical consumables; last wins.
-    specs[key] = consumables;
-    console.log(`  ${key.padEnd(32)} ${Object.keys(consumables).length} consumables`);
+    if (!byspec.has(key)) byspec.set(key, []);
+    byspec.get(key).push({ name: profile.name, consumables });
+  }
+
+  const specs = {};
+  for (const [key, entries] of byspec) {
+    // The base profile is named `<prefix>_<Class>_<Spec>.simc`; a hero-talent
+    // variant appends `_<HeroTree>` to exactly that name, so the base is the
+    // shortest name in the group. Take the base and never let a variant
+    // overwrite it: they do disagree (mage/fire and shaman/enhancement each
+    // carry a different flask in their variant), and "last wins" silently
+    // shipped a hero-tree-specific recommendation to everyone in the spec.
+    entries.sort((a, b) => a.name.length - b.name.length || a.name.localeCompare(b.name));
+    const [base, ...variants] = entries;
+    specs[key] = base.consumables;
+    for (const variant of variants) {
+      const differing = CONSUMABLE_KEYS.filter(
+        (k) => (variant.consumables[k] ?? null) !== (base.consumables[k] ?? null)
+      );
+      if (differing.length) {
+        console.warn(
+          `  WARN ${variant.name} disagrees with ${base.name} on ${differing.join(", ")} — keeping the base profile`
+        );
+      }
+    }
+    console.log(
+      `  ${key.padEnd(32)} ${Object.keys(base.consumables).length} consumables (${base.name})`
+    );
   }
 
   const count = Object.keys(specs).length;

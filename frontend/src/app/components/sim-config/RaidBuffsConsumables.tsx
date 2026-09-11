@@ -6,6 +6,8 @@ import { DEFAULT_EXPANSION_OPTIONS, DEFAULT_RAID_BUFFS } from '../../lib/sim-con
 import { useLanguage } from '../../lib/i18n';
 import { API_URL, apiUrl, fetchJsonOr } from '../../lib/api';
 import { parseCharacterInfo } from '../../lib/character';
+import { decodeHeader } from '../../lib/talentDecode';
+import { SPEC_ID_TO_NAME } from '../../lib/types';
 
 interface ConsumableEntry {
   value: string;
@@ -121,6 +123,7 @@ export default function RaidBuffsConsumables() {
     expansionOptions,
     setExpansionOptions,
     simcInput,
+    selectedTalent,
   } = useSimContext();
 
   const [apiData, setApiData] = useState<ConsumablesApiResponse | null>(null);
@@ -136,7 +139,22 @@ export default function RaidBuffsConsumables() {
 
   const character = useMemo(() => parseCharacterInfo(simcInput), [simcInput]);
   const className = character?.className ?? '';
-  const spec = character?.spec ?? '';
+  // The backend resolves the recommendation *after* `apply_spec_override`, so
+  // the spec that actually sims is the one the selected talent string encodes,
+  // not the `spec=` line of the addon export. Derive it exactly as
+  // `useSharedSimPayload` derives `spec_override`, or the hint names the wrong
+  // spec's items whenever the user loads a different spec's talents.
+  const spec = useMemo(() => {
+    if (selectedTalent) {
+      try {
+        const { specId } = decodeHeader(selectedTalent);
+        if (SPEC_ID_TO_NAME[specId]) return SPEC_ID_TO_NAME[specId];
+      } catch {
+        // Undecodable talent string: fall back to the export's own spec.
+      }
+    }
+    return character?.spec ?? '';
+  }, [selectedTalent, character]);
 
   useEffect(() => {
     if (!className || !spec || spec === 'unknown') {
@@ -186,7 +204,15 @@ export default function RaidBuffsConsumables() {
   function recommendedLabel(key: string, options: { value: string; label: string }[]) {
     const raw = recommended?.[RECOMMENDED_KEYS[key]];
     if (!raw) return null;
-    const value = key === 'weapon_rune' ? weaponRuneValue(raw) : raw;
+    // SimC does recommend "nothing in this slot" for some specs
+    // (shaman/enhancement ships `temporary_enchant=disabled`); say so rather
+    // than printing the token.
+    if (raw === DISABLED) return t('config.consumableNone');
+    // A profile line can carry a SimC condition
+    // (`main_hand:oil_2,if=!talent.flametongue_weapon`) — not part of the item
+    // name the dropdown matches on.
+    const item = raw.split(',')[0];
+    const value = key === 'weapon_rune' ? weaponRuneValue(item) : item;
     return options.find((o) => o.value === value)?.label ?? value;
   }
 
