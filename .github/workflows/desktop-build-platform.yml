@@ -135,6 +135,8 @@ jobs:
       # release, the build just ships without default consumables and users pick
       # them manually.
       - name: Fetch SimC consumable recommendations
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           if ! node backend/scripts/fetch-season-consumables.mjs backend/resources/data-full; then

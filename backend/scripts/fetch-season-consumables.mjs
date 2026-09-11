@@ -48,8 +48,14 @@ const CLASS_LINE = /^([a-z_]+)="/;
 
 /** Fetch with a timeout; GitHub occasionally accepts and then stalls. */
 async function fetchText(url) {
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   const response = await fetch(url, {
-    headers: { "User-Agent": "SimHammer" },
+    headers: {
+      "User-Agent": "SimHammer",
+      // CI runners share an IP and hit the anonymous GitHub API rate limit
+      // (HTTP 403); GITHUB_TOKEN is always available there.
+      ...(token && url.startsWith("https://api.github.com/") ? { Authorization: `Bearer ${token}` } : {}),
+    },
     signal: AbortSignal.timeout(60_000),
   });
   if (!response.ok) {

@@ -71,6 +71,8 @@ jobs:
       # assert against this file's real contents, so a missing fetch would turn
       # a data problem into an unexplained test failure.
       - name: Fetch SimC consumable recommendations
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         working-directory: .
         run: node backend/scripts/fetch-season-consumables.mjs backend/resources/data
 
