@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import DpsHeroCard from '../results/DpsHeroCard';
 import GearOverview from './GearOverview';
 import TopGearRankings from './TopGearRankings';
+import EncounterSummary from './EncounterSummary';
 import { useEnchantInfo, useGemInfo, useItemInfo } from '../../lib/useItemInfo';
 import { useLanguage } from '../../lib/i18n';
 import { useWowheadTooltips, wowheadKeyFor } from '../../lib/useWowheadTooltips';
@@ -169,6 +170,24 @@ export default function TopGearResults({
             gemInfoMap={gemInfoMap}
           />
         ))}
+
+      {hasEncounterData && (
+        <EncounterSummary
+          results={activeResults}
+          baseDps={baseDps}
+          maxDps={maxDps}
+          targetError={targetError}
+          itemInfoMap={itemInfoMap}
+          enchantInfoMap={enchantInfoMap}
+          gemInfoMap={gemInfoMap}
+          bestResultName={bestResult?.name}
+          selectedResultName={selectedResultName}
+          onSelectResult={setSelectedResultName}
+          compareResultName={compareResultName}
+          onCompareResult={toggleCompareResult}
+          sourceJobId={sourceJobId}
+        />
+      )}
 
       <TopGearRankings
         results={activeResults}

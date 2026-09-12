@@ -192,6 +192,23 @@ pub struct TopGearRequest {
 pub struct DroptimizerRequest {
     pub simc_input: String,
     pub drop_items: Vec<Value>,
+    /// Raise equipped gear to this rank on its own track before comparing, so
+    /// the baseline sits level with the rank the candidates are being tested at.
+    /// Absent leaves equipped gear exactly as exported. Never downgrades.
+    #[serde(default)]
+    pub upgrade_equipped_to: Option<u64>,
+    /// Gem used for sockets the equipped item in that slot does not already
+    /// cover. Absent falls back to the player's most-used equipped gem.
+    #[serde(default)]
+    pub preferred_gem_id: Option<u64>,
+    /// Sim every eligible candidate as if it carried a vault reward's extra socket.
+    #[serde(default)]
+    pub add_vault_socket: bool,
+    /// Sim every combo in one pass at the requested target_error. Off means the
+    /// staged run, whose pruned rows keep the coarse number of the stage they
+    /// died in — every Drop Finder row is an answer, so this defaults on.
+    #[serde(default = "default_true")]
+    pub force_single_pass: bool,
     /// Chosen secondary-stat IDs (e.g. `[49, 36]` = Mastery/Haste) applied to
     /// every crafted candidate; order irrelevant. Only sent for crafted runs.
     #[serde(default)]
@@ -341,4 +358,34 @@ fn default_desired_targets() -> u32 {
 }
 fn default_max_time() -> u32 {
     300
+}
+fn default_true() -> bool {
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn droptimizer_runs_sim_every_combo_at_the_users_precision_by_default() {
+        let req: DroptimizerRequest = serde_json::from_value(json!({
+            "simc_input": "deathknight=\"Test\"",
+            "drop_items": [],
+        }))
+        .unwrap();
+        assert!(req.force_single_pass);
+    }
+
+    #[test]
+    fn droptimizer_honors_an_explicit_opt_out_of_single_pass() {
+        let req: DroptimizerRequest = serde_json::from_value(json!({
+            "simc_input": "deathknight=\"Test\"",
+            "drop_items": [],
+            "force_single_pass": false,
+        }))
+        .unwrap();
+        assert!(!req.force_single_pass);
+    }
 }

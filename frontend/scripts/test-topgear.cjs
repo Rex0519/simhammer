@@ -83,14 +83,8 @@ test('unchangedSlotCount is 0 for no groups', () => {
 test('gearGridColumns clamps the track so it cannot outgrow its container', () => {
   // A bare minmax(300px, 1fr) cannot shrink below 300px and overflows a
   // narrower container; min(300px, 100%) can.
-  assert.equal(
-    gearGridColumns('compact'),
-    'repeat(auto-fill, minmax(min(300px, 100%), 1fr))'
-  );
-  assert.equal(
-    gearGridColumns('ultra'),
-    'repeat(auto-fill, minmax(min(260px, 100%), 1fr))'
-  );
+  assert.equal(gearGridColumns('compact'), 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))');
+  assert.equal(gearGridColumns('ultra'), 'repeat(auto-fill, minmax(min(260px, 100%), 1fr))');
   assert.equal(
     gearGridColumns('comfortable', true),
     'repeat(auto-fill, minmax(min(220px, 100%), 1fr))'
@@ -131,18 +125,298 @@ test('buildResolvedCopy keeps the source segment on owned catalysed gear', () =>
   assert.equal(copy.uid, '250042::bags:head:249629');
 });
 
-const { getWowheadData } = require("../src/app/lib/useItemInfo.ts");
+const { getWowheadData } = require('../src/app/lib/useItemInfo.ts');
 
-test("getWowheadData emits original-item for owned catalysed gear without the conversion flag", () => {
-  const params = new URLSearchParams(
-    getWowheadData({ ilevel: 600, source_item_id: 249629 }),
-  );
-  assert.equal(params.get("original-item"), "249629");
+test('getWowheadData emits original-item for owned catalysed gear without the conversion flag', () => {
+  const params = new URLSearchParams(getWowheadData({ ilevel: 600, source_item_id: 249629 }));
+  assert.equal(params.get('original-item'), '249629');
 });
 
-test("getWowheadData skips original-item on Void Forge rows, which reuse source_item_id", () => {
+test('getWowheadData skips original-item on Void Forge rows, which reuse source_item_id', () => {
   const params = new URLSearchParams(
-    getWowheadData({ ilevel: 600, source_item_id: 111, is_void_forge: true }),
+    getWowheadData({ ilevel: 600, source_item_id: 111, is_void_forge: true })
   );
-  assert.equal(params.get("original-item"), null);
+  assert.equal(params.get('original-item'), null);
+});
+
+// ---- Source summary ----
+const {
+  summarizeByEncounter,
+  expectedDelta,
+  bestDelta,
+  bestPerItem,
+  collectItemQueries,
+  collectGemIds,
+  appliedGems,
+  dedupeEncounterResults,
+} = require('../src/app/components/gear/topGearResultsUtils.ts');
+
+let nextItemId = 1;
+/** A result for a distinct item, unless `itemId` pins it to an existing one. */
+const res = (encounter, delta, { precision, itemId, slot = 'head' } = {}) => {
+  const id = itemId ?? nextItemId++;
+  return {
+    name: `${encounter}-${id}-${slot}`,
+    dps: 100000 + delta,
+    delta,
+    items: [{ item_id: id, ilevel: 1, name: `Item ${id}`, slot, encounter }],
+    ...(precision === undefined ? {} : { precision_pct: precision }),
+  };
+};
+
+test('expected value averages a source upgrades, counting a downgrade as nothing', () => {
+  // Nobody is forced to equip a downgrade, so it contributes 0 rather than
+  // dragging the average below what the source is actually worth.
+  const group = [res('Boss', 300), res('Boss', 100), res('Boss', -800)];
+  assert.equal(expectedDelta(group), (300 + 100 + 0) / 3);
+  assert.equal(bestDelta(group), 300);
+  assert.equal(expectedDelta([]), 0);
+  assert.equal(bestDelta([]), 0);
+});
+
+test('an item simmed in two slots counts once, at the slot worth equipping', () => {
+  // A ring is simmed in finger1 and finger2. Only one of those is ever worn, so
+  // the worse slot must not register as a second, negative outcome.
+  const ring = nextItemId++;
+  const group = [
+    res('Boss', 900, { itemId: ring, slot: 'finger1' }),
+    res('Boss', -600, { itemId: ring, slot: 'finger2' }),
+    res('Boss', 300),
+  ];
+  const collapsed = bestPerItem(group);
+  assert.deepEqual(
+    collapsed.map((result) => result.delta),
+    [900, 300]
+  );
+  const [row] = summarizeByEncounter(group, 'expected', 100000);
+  assert.equal(row.results.length, 2, 'the strip shows items, not slot rows');
+  assert.equal(row.expected, (900 + 300) / 2, 'the worse slot is not averaged in');
+  assert.equal(row.best, 900);
+});
+
+test('a catalyst or Void Forge variant stays its own item', () => {
+  // Two sources convert to the same tier piece; each sims different secondaries,
+  // so they are genuinely different outcomes rather than one item in two slots.
+  const tier = nextItemId++;
+  const group = [
+    {
+      ...res('Boss', 500, { itemId: tier }),
+      items: [
+        {
+          item_id: tier,
+          ilevel: 1,
+          name: 'T',
+          slot: 'head',
+          encounter: 'Boss',
+          source_item_id: 11,
+        },
+      ],
+    },
+    {
+      ...res('Boss', 200, { itemId: tier }),
+      items: [
+        {
+          item_id: tier,
+          ilevel: 1,
+          name: 'T',
+          slot: 'head',
+          encounter: 'Boss',
+          source_item_id: 22,
+        },
+      ],
+    },
+  ];
+  assert.equal(bestPerItem(group).length, 2);
+});
+
+test('a Void Forged row does not queue a second, bonus-less lookup of itself', () => {
+  // Void Forge points source_item_id at its own id, and the batch response is
+  // keyed by item id alone — so a bare duplicate can overwrite the forged
+  // entry's info with the base item's.
+  const forged = res('Boss', 500);
+  const id = forged.items[0].item_id;
+  forged.items[0].bonus_ids = [123];
+  forged.items[0].source_item_id = id;
+  forged.items[0].is_void_forge = true;
+  const queries = collectItemQueries([forged]);
+  assert.equal(queries.length, 1, `expected one query, got ${JSON.stringify(queries)}`);
+});
+
+test('the item lookup covers the drop a catalyst row converts', () => {
+  // The CAT pill names where the conversion came from, so the source item's
+  // info has to be fetched even though no row is simmed under that id.
+  const conversion = res('Boss', 500);
+  conversion.items[0].is_catalyst = true;
+  conversion.items[0].source_item_id = 90210;
+  const ids = collectItemQueries([conversion]).map((query) => query.item_id);
+  assert.ok(ids.includes(90210), `source item missing from ${JSON.stringify(ids)}`);
+});
+
+test('a drop draws a chip per socket, skipping gems whose info has not arrived', () => {
+  const gems = {
+    11: { gem_id: 11, name: 'Garnet', icon: 'a', quality: 4 },
+    22: { gem_id: 22, name: 'Lapis', icon: 'b', quality: 4 },
+  };
+  const ids = (item) => appliedGems(item, gems).map((gem) => gem.gem_id);
+  assert.deepEqual(ids({ gem_id: 11, gem_ids: [11, 22] }), [11, 22]);
+  // `gem_ids` is absent on older results, so the single id still has to draw.
+  assert.deepEqual(ids({ gem_id: 11 }), [11]);
+  assert.deepEqual(ids({ gem_ids: [99] }), []);
+});
+
+test('two combos that move different gear stay two rows', () => {
+  // The swapped trinket pair puts the drop in the partner's slot AND moves the
+  // partner into the drop's — a different gear set from simply dropping into
+  // that slot, even though the drop itself lands identically.
+  const plain = res('Boss', 900, { itemId: 500, slot: 'trinket2' });
+  const swapped = res('Boss', 400, { itemId: 500, slot: 'trinket2' });
+  swapped.items.push({
+    item_id: 777,
+    ilevel: 1,
+    name: 'Partner',
+    slot: 'trinket1',
+    encounter: 'Boss',
+    is_kept: true,
+  });
+  const rows = dedupeEncounterResults([plain, swapped], true);
+  assert.equal(rows.length, 2, 'the swap must not collapse into the plain combo');
+});
+
+test('the gem lookup covers every socket on a drop, not just the first', () => {
+  // A neck or crafted piece carries more than one gem, and the row draws a chip
+  // per socket — an unfetched gem id would drop its chip silently.
+  const drop = res('Boss', 100);
+  drop.items[0].gem_id = 11;
+  drop.items[0].gem_ids = [11, 22];
+  assert.deepEqual(collectGemIds([drop]).sort(), [11, 22]);
+});
+
+test('expected value folds a catalyst conversion onto the drop it converts', () => {
+  // Catalysing the head you just looted is what you do WITH that drop, not a
+  // second chance at one, so the pair counts once at the better of the two.
+  const source = nextItemId++;
+  const conversion = res('Boss', 3306, { itemId: nextItemId++ });
+  conversion.items[0].source_item_id = source;
+  const group = [
+    res('Boss', 3237, { itemId: source }),
+    conversion,
+    res('Boss', 1905),
+    res('Boss', 1196),
+  ];
+  assert.equal(expectedDelta(bestPerItem(group)), (3306 + 1905 + 1196) / 3);
+});
+
+test('expected value folds a Void Forged copy onto the drop it upgrades', () => {
+  // The forged copy is the same drop rolling higher, so it replaces its base in
+  // the average rather than adding an outcome the boss cannot separately give.
+  const base = nextItemId++;
+  const forged = res('Boss', 900, { itemId: base });
+  forged.items[0].ilevel = 2;
+  forged.items[0].source_item_id = base;
+  const group = [res('Boss', 500, { itemId: base }), forged, res('Boss', 200)];
+  assert.equal(expectedDelta(bestPerItem(group)), (900 + 200) / 2);
+});
+
+test('an encounter row carries every combination simmed for it, best first', () => {
+  // The collapsed strip shows items; expanding the row shows the sims, so both
+  // slot rows of a ring have to survive alongside the other drops.
+  const ring = nextItemId++;
+  const group = [
+    res('Boss', 100),
+    res('Boss', 900, { itemId: ring, slot: 'finger1' }),
+    res('Boss', -600, { itemId: ring, slot: 'finger2' }),
+  ];
+  const [row] = summarizeByEncounter(group, 'expected', 100000);
+  assert.deepEqual(
+    row.combos.map((result) => result.delta),
+    [900, 100, -600]
+  );
+  assert.equal(row.results.length, 2, 'the strip still collapses the ring to one item');
+});
+
+test('an encounter row names the instance its drops come from', () => {
+  const drop = res('Boss', 100);
+  drop.items[0].instance = 'The Venomous Abyss';
+  const [row] = summarizeByEncounter([drop], 'expected', 100000);
+  assert.equal(row.instance, 'The Venomous Abyss');
+});
+
+test('a chain of near-ties does not drag distant sources into one priority', () => {
+  // Each neighbour is within the band, but the ends are not: 300 vs 150 is
+  // 150 DPS apart against a 100 DPS band, which the sim can plainly separate.
+  const results = [
+    res('Top', 300, { precision: 0.1 }),
+    res('Middle', 225, { precision: 0.1 }),
+    res('Bottom', 150, { precision: 0.1 }),
+  ];
+  const rows = summarizeByEncounter(results, 'expected', 100000);
+  assert.deepEqual(
+    rows.map((row) => row.priority),
+    [1, 1, 2]
+  );
+});
+
+test('sorting by expected value can outrank a source with the single best drop', () => {
+  // Thin has one huge item and three duds; Broad is good across the board.
+  const results = [
+    res('Thin', 1000),
+    res('Thin', 0),
+    res('Thin', 0),
+    res('Thin', 0),
+    res('Broad', 400),
+    res('Broad', 400),
+    res('Broad', 400),
+    res('Broad', 400),
+  ];
+  const byExpected = summarizeByEncounter(results, 'expected', 100000);
+  assert.deepEqual(
+    byExpected.map((row) => row.encounter),
+    ['Broad', 'Thin']
+  );
+  assert.equal(byExpected[0].expected, 400);
+  assert.equal(byExpected[1].expected, 250);
+  const byBest = summarizeByEncounter(results, 'best', 100000);
+  assert.deepEqual(
+    byBest.map((row) => row.encounter),
+    ['Thin', 'Broad']
+  );
+});
+
+test('sources the sim cannot tell apart share a priority', () => {
+  // 1% precision on a 100k baseline is a 1000 DPS band: 900 apart is noise,
+  // 2000 apart is real.
+  const results = [
+    res('A', 5000, { precision: 1 }),
+    res('B', 4100, { precision: 1 }),
+    res('C', 2100, { precision: 1 }),
+  ];
+  const rows = summarizeByEncounter(results, 'expected', 100000);
+  assert.deepEqual(
+    rows.map((row) => [row.encounter, row.priority]),
+    [
+      ['A', 1],
+      ['B', 1],
+      ['C', 2],
+    ]
+  );
+  // Without precision data there is no band, so every source stands alone.
+  const exact = summarizeByEncounter(
+    [res('A', 5000), res('B', 4100), res('C', 2100)],
+    'expected',
+    100000
+  );
+  assert.deepEqual(
+    exact.map((row) => row.priority),
+    [1, 2, 3]
+  );
+});
+
+test('results without an encounter are left out of the summary', () => {
+  const stray = res('', 500);
+  stray.items = [{ item_id: 9999, ilevel: 1, name: 'y', slot: 'neck' }];
+  const rows = summarizeByEncounter([res('Boss', 100), stray], 'expected', 100000);
+  assert.deepEqual(
+    rows.map((row) => row.encounter),
+    ['Boss']
+  );
 });

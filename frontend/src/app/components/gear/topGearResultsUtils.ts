@@ -1,4 +1,4 @@
-import { toGemIdList, type ItemQuery } from '../../lib/useItemInfo';
+import { toGemIdList, type GemInfo, type ItemQuery } from '../../lib/useItemInfo';
 import type { GearItem } from './GearOverview';
 import type { GroupMode, ResultItem, TopGearResult } from './topGearResultsTypes';
 
@@ -44,12 +44,22 @@ export function dedupeEncounterResults(
       continue;
     }
 
-    // Include slot: a ring/trinket is simmed in BOTH slots (finger1 vs finger2,
-    // trinket1 vs trinket2) and each is a distinct result — they must NOT collapse
-    // into one row, or the better slot's verdict hides the other's (matches the
-    // per-slot breakdown shown by Raidbots). Same for the catalyst source: two
-    // sources convert to the same tier piece but sim different secondaries.
-    const key = `${item.item_id}_${item.ilevel}_${item.encounter || ''}_${item.slot || ''}_${item.source_item_id || ''}`;
+    // Keyed on every item the combo moves, not just the drop. Slot matters: a
+    // ring/trinket is simmed in BOTH slots (finger1 vs finger2, trinket1 vs
+    // trinket2) and each is a distinct result — they must NOT collapse into one
+    // row, or the better slot's verdict hides the other's (matches the per-slot
+    // breakdown shown by Raidbots). Same for the catalyst source: two sources
+    // convert to the same tier piece but sim different secondaries. And the
+    // swapped trinket pair lands the drop in the same slot as the plain combo
+    // for that slot while also moving the partner, so the partner is what tells
+    // those two gear sets apart.
+    const key = [
+      item.encounter || '',
+      ...result.items.map(
+        (moved) =>
+          `${moved.item_id}_${moved.ilevel}_${moved.slot || ''}_${moved.source_item_id || ''}`
+      ),
+    ].join('|');
     const existing = bestByItem.get(key);
     if (!existing || result.dps > existing.dps) {
       bestByItem.set(key, result);
@@ -221,6 +231,13 @@ export function collectItemQueries(
   for (const result of results) {
     for (const item of result.items) {
       addItem(item);
+      // A catalyst row names the drop it came from, so that item needs info too
+      // even though nothing is simmed under its id. Bonus ids are the tier
+      // piece's, not the source's — name and icon are all this lookup is for.
+      // Only a catalyst has an origin: a Void Forged row points the same field
+      // at itself, and a bare duplicate of its own id would come back without
+      // the forged bonuses and overwrite it in a map keyed by item id.
+      if (item.is_catalyst && item.source_item_id) addItem({ item_id: item.source_item_id });
     }
   }
 
@@ -236,13 +253,15 @@ export function collectItemQueries(
 function collectIds(
   results: TopGearResult[],
   equippedGear: Record<string, ResultItem> | undefined,
-  pick: (item: ResultItem) => number | undefined
+  pick: (item: ResultItem) => number | number[] | undefined
 ): number[] {
   const ids = new Set<number>();
 
-  const addId = (id?: number) => {
-    if (id && id > 0) {
-      ids.add(id);
+  const addId = (picked?: number | number[]) => {
+    for (const id of Array.isArray(picked) ? picked : [picked]) {
+      if (id && id > 0) {
+        ids.add(id);
+      }
     }
   };
 
@@ -268,11 +287,25 @@ export function collectEnchantIds(
   return collectIds(results, equippedGear, (item) => item.enchant_id);
 }
 
+/** Gems a drop is simmed with — `gem_ids` when present (necks and crafted gear
+ *  hold more than one), else the single `gem_id`. Ids whose info has not arrived
+ *  yet are dropped rather than drawn as blanks. */
+export function appliedGems(
+  item: Pick<ResultItem, 'gem_id' | 'gem_ids'>,
+  gemInfoMap: Record<number, GemInfo>
+): GemInfo[] {
+  return toGemIdList(item)
+    .map((id) => gemInfoMap[id])
+    .filter((gem): gem is GemInfo => !!gem);
+}
+
 export function collectGemIds(
   results: TopGearResult[],
   equippedGear?: Record<string, ResultItem>
 ): number[] {
-  return collectIds(results, equippedGear, (item) => item.gem_id);
+  // A row draws one chip per socket, so every gem needs its info — `gem_id`
+  // alone only ever covers the first.
+  return collectIds(results, equippedGear, toGemIdList);
 }
 
 export function getCharacterRenderUrl(
@@ -287,4 +320,114 @@ export function getCharacterRenderUrl(
   return `https://simhammer.com/api/blizzard/character/${playerRegion}/${encodeURIComponent(
     playerRealm.toLowerCase()
   )}/${encodeURIComponent(playerName.toLowerCase())}/media/render`;
+}
+
+/** What one source (boss, dungeon, vendor) is worth across everything it drops. */
+export interface EncounterSummaryRow {
+  encounter: string;
+  /** Raid or dungeon the encounter sits in. Absent on results simmed before the
+   *  droptimizer started carrying it. */
+  instance?: string;
+  results: TopGearResult[];
+  /** Every combination simmed for this source, best first — what the row shows
+   *  when expanded, as opposed to the per-item strip in `results`. */
+  combos: TopGearResult[];
+  /** What an unknown drop from here is worth: the mean over the items that can
+   *  drop, each valued at the best it can become. A downgrade contributes
+   *  nothing rather than dragging the average negative, because nobody is
+   *  forced to equip it. */
+  expected: number;
+  best: number;
+  /** Sources too close to separate share a number. */
+  priority: number;
+}
+
+export type SummarySort = 'expected' | 'best';
+
+/** One row per item, keeping the slot it is worth most in. A ring or trinket is
+ *  simmed in both of its slots, but only one of those is ever equipped — so the
+ *  worse slot must not count as a second outcome when averaging a source. Keyed
+ *  like `dedupeEncounterResults` minus the slot, so catalyst and Void Forge
+ *  variants stay distinct items rather than collapsing into their base. */
+export function bestPerItem(results: TopGearResult[]): TopGearResult[] {
+  const best = new Map<string, TopGearResult>();
+  for (const result of results) {
+    const item = result.items[0];
+    if (!item) continue;
+    const key = `${item.item_id}_${item.ilevel}_${item.encounter || ''}_${item.source_item_id || ''}`;
+    const existing = best.get(key);
+    if (!existing || result.delta > existing.delta) best.set(key, result);
+  }
+  return [...best.values()].sort((a, b) => b.delta - a.delta);
+}
+
+/** What one unknown drop from a source is worth. Variant rows (catalyst, Void
+ *  Forge) are alternative uses of a drop already counted, not extra chances at
+ *  one, so they fold onto it and the best outcome stands. */
+export function expectedDelta(results: TopGearResult[]): number {
+  const perDrop = new Map<string, number>();
+  for (const result of results) {
+    const item = result.items[0];
+    if (!item) continue;
+    const key = `${item.source_item_id || item.item_id}_${item.encounter || ''}`;
+    perDrop.set(key, Math.max(perDrop.get(key) ?? 0, result.delta, 0));
+  }
+  if (!perDrop.size) return 0;
+  return [...perDrop.values()].reduce((sum, delta) => sum + delta, 0) / perDrop.size;
+}
+
+export function bestDelta(results: TopGearResult[]): number {
+  return results.length ? Math.max(...results.map((result) => result.delta)) : 0;
+}
+
+/** The DPS band inside which two sources cannot be told apart, taken from the
+ *  loosest confidence interval among the rows being compared. Without precision
+ *  data the band is zero, so every row gets its own priority. */
+function indistinguishableBand(rows: EncounterSummaryRow[], baseDps: number): number {
+  const worst = rows.flatMap((row) => row.results.map((result) => result.precision_pct ?? 0));
+  return (Math.max(0, ...worst) / 100) * baseDps;
+}
+
+export function summarizeByEncounter(
+  results: TopGearResult[],
+  sort: SummarySort,
+  baseDps: number
+): EncounterSummaryRow[] {
+  const groups: Record<string, TopGearResult[]> = {};
+  for (const result of results) {
+    const key = result.items[0]?.encounter;
+    if (!key) continue;
+    (groups[key] ??= []).push(result);
+  }
+
+  const rows = Object.entries(groups).map(([encounter, group]) => {
+    // Collapse per-slot rows first: everything below counts each item once.
+    const items = bestPerItem(group);
+    return {
+      encounter,
+      instance: group.find((result) => result.items[0]?.instance)?.items[0]?.instance,
+      results: items,
+      combos: [...group].sort((a, b) => b.delta - a.delta),
+      expected: expectedDelta(items),
+      best: bestDelta(items),
+      priority: 0,
+    };
+  });
+
+  const metric = (row: EncounterSummaryRow) => (sort === 'best' ? row.best : row.expected);
+  rows.sort((a, b) => metric(b) - metric(a));
+
+  // Banded against the leader of the current priority, not the row above: a
+  // chain of individually-indistinguishable gaps would otherwise carry one
+  // priority all the way down a list whose ends the sim can plainly separate.
+  let priority = 0;
+  let leader: EncounterSummaryRow | undefined;
+  for (const row of rows) {
+    if (!leader || metric(leader) - metric(row) > indistinguishableBand([leader, row], baseDps)) {
+      priority += 1;
+      leader = row;
+    }
+    row.priority = priority;
+  }
+  return rows;
 }

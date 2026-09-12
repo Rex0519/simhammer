@@ -97,6 +97,19 @@ export interface DungeonCategory {
   difficultyGroups?: DifficultyGroup[];
 }
 
+/** A raid bonus-roll tier. Flat rank: the reward is paid at the Great Vault item
+ *  level for the difficulty rolled on, whichever boss it came from. */
+export interface RaidVaultDifficulty extends DifficultyDef {
+  baseDifficulty: string;
+}
+
+/** Which dungeon category supplies the Mythic+ bonus-roll ladder, and which of
+ *  its difficulty keys are bonus-roll tiers. */
+export interface BonusRollConfig {
+  dungeonCategory: string;
+  dungeonDifficulties: string[];
+}
+
 export interface CraftedEmbellishment {
   id: number;
   name: string;
@@ -116,6 +129,9 @@ export interface SeasonConfigResponse {
   fixed_difficulty_encounters?: number[];
   crafted_secondary_stats?: number[];
   crafted_embellishments?: CraftedEmbellishment[];
+  /** Bonus-roll tiers for raid loot; absent when the season has no bonus rolls. */
+  raid_vault_difficulties?: RaidVaultDifficulty[];
+  bonus_roll?: BonusRollConfig;
 }
 
 // Gear slots constant (matches backend)

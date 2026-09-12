@@ -79,7 +79,7 @@ impl SimcProvider for SimmitProvider {
         &self,
         ctx: RunCtx<'_>,
         input: &str,
-        _opts: &Value,
+        opts: &Value,
         _combo_count: usize,
         _staged_ctx: crate::compute::StagedExecutionContext,
     ) -> Result<SimcOutput, RunError> {
@@ -88,7 +88,13 @@ impl SimcProvider for SimmitProvider {
         let bearer = Self::bearer(&ctx)?;
         let stripped = strip_simmit_blocked_directives(input);
         let remote_id = self
-            .submit(&bearer, ctx.job_id, ctx.job_id, &stripped, true)
+            .submit(
+                &bearer,
+                ctx.job_id,
+                ctx.job_id,
+                &stripped,
+                server_side_multistage(opts),
+            )
             .await?;
         let _final_status = self.poll_to_terminal(&bearer, &remote_id, &ctx).await?;
         self.fetch_result(&bearer, &remote_id).await
@@ -216,6 +222,15 @@ const BLOCKED_PREFIXES: &[&str] = &[
 ];
 
 const BLOCKED_PREFIX_GLOBS: &[&str] = &["dps_plot_", "reforge_plot_"];
+
+/// Whether to let Simmit stage the run server-side. A job that asked for a single
+/// full-precision pass opts out, or its pruned rows come back at coarse precision.
+fn server_side_multistage(opts: &Value) -> bool {
+    !opts
+        .get("force_single_pass")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
 
 pub fn strip_simmit_blocked_directives(input: &str) -> String {
     input
@@ -1205,5 +1220,18 @@ mod tests {
             terminal_status_to_result(&s2),
             Err(RunError::Other(_))
         ));
+    }
+
+    #[test]
+    fn a_single_pass_job_opts_out_of_server_side_multistage() {
+        // Drop Finder runs ask for every combo at full precision; Simmit's own
+        // staging would prune them back to coarse numbers.
+        assert!(!server_side_multistage(&serde_json::json!({
+            "force_single_pass": true
+        })));
+        assert!(server_side_multistage(&serde_json::json!({
+            "force_single_pass": false
+        })));
+        assert!(server_side_multistage(&serde_json::json!({})));
     }
 }

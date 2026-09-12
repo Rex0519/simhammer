@@ -3,6 +3,8 @@ import type { GearItem } from './gearOverviewTypes';
 
 export interface ResultItem extends GearItem {
   encounter?: string;
+  /** Raid or dungeon the encounter sits in; absent on older results. */
+  instance?: string;
   type?: 'enchant' | 'gem';
 }
 

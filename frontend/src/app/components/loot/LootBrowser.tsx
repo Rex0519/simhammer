@@ -7,13 +7,18 @@ import { VOID_FORGE_ENABLED } from '../../lib/featureFlags';
 import { useLootCatalog } from './useLootCatalog';
 import { parseLootCharacter, type LootCatalog } from './lootConfiguration';
 import { useLootBrowserModel, type LootSubmission } from './useLootBrowserModel';
+import type { DifficultyDef } from '../../lib/types';
 import { formatSpecName } from './types';
 import SlotFilter from './SlotFilter';
+import SourceFilter from './SourceFilter';
 import ItemTable from './ItemTable';
 import DungeonDrawer from './DungeonDrawer';
 import DifficultySelect from './DifficultySelect';
 import UpgradeSelect from './UpgradeSelect';
 import PreferredStatsSelect from './PreferredStatsSelect';
+import PreferredGemSelect, { useGemOptions } from './PreferredGemSelect';
+import { collectOwned } from './ownedDrops';
+import { useResolvedGear } from '../../lib/useResolvedGear';
 import CategorySelector from './CategorySelector';
 import TalentPicker from '../talents/TalentPicker';
 import ErrorAlert from '../ui/ErrorAlert';
@@ -34,6 +39,11 @@ function LoadError({ message, retry }: { message: string; retry: () => void }) {
       </button>
     </div>
   );
+}
+/** "No roll on this side" — a trackless entry, so it shows neither track badge
+ *  nor item level, and selecting it drops that half of the pool. */
+function noBonusRollTier(t: (key: string) => string): DifficultyDef {
+  return { key: '', label: t('dropFinder.bonusRollNone'), track: null, level: 0, sortOrder: 0 };
 }
 export interface LootBrowserProps {
   footer?: (submission: LootSubmission | null) => ReactNode;
@@ -60,7 +70,14 @@ function LootBrowserSession({
   footer,
 }: LootBrowserProps & { catalog: LootCatalog; character: ReturnType<typeof parseLootCharacter> }) {
   const { t } = useLanguage();
-  const model = useLootBrowserModel(catalog, character);
+  const { simcInput } = useSimContext();
+  // Equipped identity comes from the resolver, which knows each item's level and
+  // upgrade track. It resolves to null on failure, so a hiccup means nothing is
+  // excluded rather than a broken page.
+  const { resolved } = useResolvedGear(simcInput);
+  const owned = useMemo(() => collectOwned(resolved), [resolved]);
+  const model = useLootBrowserModel(catalog, character, owned);
+  const gems = useGemOptions();
   const {
     configuration,
     details,
@@ -70,6 +87,7 @@ function LootBrowserSession({
     activeSpecs,
     toggleSpec,
     availableSlots,
+    sources,
     currentTrackInfo,
     upgradeLevelOptions,
     preferredStats,
@@ -83,16 +101,20 @@ function LootBrowserSession({
   const {
     isRaid,
     isCrafted,
+    isBonusRoll,
     poolOnly: isPoolOnly,
     raids,
     dungeonCats,
     difficulties: activeDifficulties,
     difficultyGroups: activeDifficultyGroups,
     instances: dungeonInstances,
+    raidTiers,
+    dungeonTiers,
   } = details;
   const { seasonConfig, upgradeTracks } = catalog;
   const { className, specName: detectedSpec, specs: allSpecs } = character;
-  const { excludedSlots, toggleSlot, resetExcludedSlots } = selection;
+  const { excludedSlots, toggleSlot, resetExcludedSlots, excludedSources, toggleSource } =
+    selection;
   const category = configuration.category;
   const isDungeon = !isRaid && !!details.source;
   return (
@@ -103,11 +125,59 @@ function LootBrowserSession({
         category={category}
         onChange={model.selectCategory}
         dungeonCats={dungeonCats}
+        includeBonusRoll
       />
 
       {/* Configuration card: dungeon pool + difficulty + upgrade level */}
-      {(isRaid || isDungeon) && (
+      {(isRaid || isDungeon || isBonusRoll) && (
         <div className="card space-y-4 p-5">
+          {/* Bonus rolls: one tier per pool, each independently skippable. */}
+          {isBonusRoll && (
+            <>
+              <div
+                className={`grid gap-4 sm:grid-cols-2 ${currentTrackInfo && drops ? 'lg:grid-cols-3' : ''}`}
+              >
+                <div>
+                  <label className="label-text">{t('dropFinder.raidBonusRoll')}</label>
+                  <DifficultySelect
+                    value={configuration.difficulty}
+                    onChange={(key) => model.selectBonusRollTier('raid', key)}
+                    difficulties={[noBonusRollTier(t), ...raidTiers]}
+                    difficultyGroups={null}
+                    upgradeTracks={upgradeTracks}
+                  />
+                </div>
+                <div>
+                  <label className="label-text">{t('dropFinder.mplusBonusRoll')}</label>
+                  <DifficultySelect
+                    value={configuration.dungeonDifficulty}
+                    onChange={(key) => model.selectBonusRollTier('dungeon', key)}
+                    difficulties={[noBonusRollTier(t), ...dungeonTiers]}
+                    difficultyGroups={null}
+                    upgradeTracks={upgradeTracks}
+                  />
+                </div>
+                {/* A rank means "level N of each item's own track", so one control
+                    serves both ladders; the labels follow the higher of the two. */}
+                {currentTrackInfo && drops && (
+                  <div>
+                    <label className="label-text">{t('dropFinder.upgradeLevel')}</label>
+                    <UpgradeSelect
+                      value={configuration.upgradeLevel}
+                      onChange={model.selectUpgrade}
+                      options={upgradeLevelOptions}
+                    />
+                  </div>
+                )}
+              </div>
+              {!configuration.difficulty && !configuration.dungeonDifficulty && (
+                <p role="status" className="text-xs text-on-surface-variant">
+                  {t('dropFinder.bonusRollPickTier')}
+                </p>
+              )}
+            </>
+          )}
+
           {/* Instance pool drawer */}
           {isDungeon && !isPoolOnly && dungeonInstances.length > 0 && (
             <div>
@@ -175,8 +245,60 @@ function LootBrowserSession({
             </div>
           )}
 
+          {/* Which gem fills sockets the player's own gear does not cover, and
+              whether a vault reward's extra socket is assumed. */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="label-text">{t('dropFinder.preferredGem')}</label>
+              <PreferredGemSelect
+                value={model.preferredGemId}
+                onChange={model.setPreferredGemId}
+                gems={gems}
+              />
+            </div>
+          </div>
+
           {/* Variant toggles: voidforge + catalyst */}
           <div className="flex flex-wrap items-center gap-4">
+            <label
+              className="group flex cursor-pointer items-center gap-2 text-sm text-on-surface-variant"
+              title={t('dropFinder.upgradeEquippedTooltip')}
+            >
+              <Checkbox
+                variant="primary"
+                size="sm"
+                checked={model.upgradeEquipped}
+                onChange={() => model.setUpgradeEquipped((value) => !value)}
+                aria-label={t('dropFinder.upgradeEquipped')}
+              />
+              {t('dropFinder.upgradeEquipped')}
+            </label>
+            <label
+              className="group flex cursor-pointer items-center gap-2 text-sm text-on-surface-variant"
+              title={t('dropFinder.addVaultSocketTooltip')}
+            >
+              <Checkbox
+                variant="primary"
+                size="sm"
+                checked={model.addVaultSocket}
+                onChange={() => model.setAddVaultSocket((value) => !value)}
+                aria-label={t('dropFinder.addVaultSocket')}
+              />
+              {t('dropFinder.addVaultSocket')}
+            </label>
+            <label
+              className="group flex cursor-pointer items-center gap-2 text-sm text-on-surface-variant"
+              title={t('dropFinder.fullPrecisionTooltip')}
+            >
+              <Checkbox
+                variant="primary"
+                size="sm"
+                checked={model.forceSinglePass}
+                onChange={() => model.setForceSinglePass((value) => !value)}
+                aria-label={t('dropFinder.fullPrecision')}
+              />
+              {t('dropFinder.fullPrecision')}
+            </label>
             {VOID_FORGE_ENABLED && (
               <label className="group flex cursor-pointer items-center gap-2 text-sm text-on-surface-variant">
                 <Checkbox
@@ -247,12 +369,19 @@ function LootBrowserSession({
           <p className="text-xs text-muted">{t('dropFinder.pasteExport')}</p>
         )}
 
-        <SlotFilter
-          availableSlots={availableSlots}
-          excludedSlots={excludedSlots}
-          toggleSlot={toggleSlot}
-          resetExcludedSlots={resetExcludedSlots}
-        />
+        <div className="ml-auto flex items-center gap-2">
+          <SourceFilter
+            sources={sources}
+            excludedSources={excludedSources}
+            toggleSource={toggleSource}
+          />
+          <SlotFilter
+            availableSlots={availableSlots}
+            excludedSlots={excludedSlots}
+            toggleSlot={toggleSlot}
+            resetExcludedSlots={resetExcludedSlots}
+          />
+        </div>
       </div>
 
       {query.status === 'loading' && <Spinner />}

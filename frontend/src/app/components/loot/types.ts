@@ -36,6 +36,8 @@ export interface DropItem {
   quality: number;
   ilevel: number;
   encounter: string;
+  /** Identity of the boss; names repeat across instances. */
+  encounter_id?: number;
   instance_name?: string;
   instance_id?: number;
   inventory_type?: number;
@@ -50,6 +52,10 @@ export interface DropItem {
   is_void_forge?: boolean;
   is_catalyst?: boolean;
   source_item_id?: number;
+  /** Name of the item a catalyst conversion was fed; its secondaries are the ones kept. */
+  source_name?: string;
+  /** Granted by a class tier token, so it carries the tier piece's own secondaries. */
+  from_tier_token?: boolean;
   extra_bonus_ids?: number[];
   /** The item's own effect grants (e.g. procs); absent when it has none. */
   effect_bonus_ids?: number[];

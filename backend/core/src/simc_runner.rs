@@ -271,6 +271,17 @@ fn build_stage_schedule_from_options(options: &Value, user_target_error: f64) ->
     schedule
 }
 
+/// Whether this run sims every combo in one pass at the user's target_error.
+/// Callers set `force_single_pass` when every row is an answer (Drop Finder,
+/// roster loot reports) and none may keep a pruning stage's coarse number.
+fn runs_single_pass(options: &Value, combo_count: usize) -> bool {
+    options
+        .get("force_single_pass")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+        || combo_count < STAGED_THRESHOLD
+}
+
 /// Below this combo count, skip staging and run a single direct sim. The 6-stage
 /// schedule needs enough combos for pruning to amortize the per-stage subprocess
 /// startup cost — for small jobs a single full-precision pass is faster.
@@ -1235,15 +1246,7 @@ pub async fn run_simc_staged(
     let max_time = p.max_time;
     let single_actor_batch = p.single_actor_batch;
 
-    // Roster loot reports set `force_single_pass` so EVERY combo is simmed in one
-    // pass at the user's target_error — no coarse staging/pruning that would leave
-    // "losing" items at low precision (loot reports compare all items, not just the winner).
-    let force_single_pass = options
-        .get("force_single_pass")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    if force_single_pass || combo_count < STAGED_THRESHOLD {
+    if runs_single_pass(options, combo_count) {
         if let Some(tok) = cancel.as_ref() {
             if tok.is_cancelled().await {
                 return Err(StagedRunError::Other(CANCEL_ERR.to_string()));
@@ -2220,6 +2223,18 @@ mod tests {
             name: Cow::Borrowed(name),
             target_error,
         }
+    }
+
+    #[test]
+    fn force_single_pass_skips_staging_at_any_combo_count() {
+        use serde_json::json;
+        // Drop Finder / roster loot reports: every row is an answer, so none of
+        // them may end up holding a pruning stage's coarse number.
+        assert!(runs_single_pass(&json!({"force_single_pass": true}), 500));
+        assert!(!runs_single_pass(&json!({"force_single_pass": false}), 500));
+        // Small runs stay single-pass on the combo-count threshold alone.
+        assert!(runs_single_pass(&json!({}), STAGED_THRESHOLD - 1));
+        assert!(!runs_single_pass(&json!({}), STAGED_THRESHOLD));
     }
 
     #[test]

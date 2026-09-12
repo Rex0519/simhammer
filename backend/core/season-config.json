@@ -29,6 +29,51 @@
       "sortOrder": 4
     }
   ],
+  "raidVaultDifficulties": [
+    {
+      "key": "vault-lfr",
+      "label": "LFR",
+      "track": "Champion",
+      "level": 1,
+      "sortOrder": 1,
+      "baseDifficulty": "lfr"
+    },
+    {
+      "key": "vault-normal",
+      "label": "Normal",
+      "track": "Hero",
+      "level": 1,
+      "sortOrder": 2,
+      "baseDifficulty": "normal"
+    },
+    {
+      "key": "vault-heroic",
+      "label": "Heroic",
+      "track": "Myth",
+      "level": 1,
+      "sortOrder": 3,
+      "baseDifficulty": "heroic"
+    },
+    {
+      "key": "vault-mythic",
+      "label": "Mythic",
+      "track": "Myth",
+      "level": 6,
+      "sortOrder": 4,
+      "baseDifficulty": "mythic"
+    }
+  ],
+  "bonusRoll": {
+    "dungeonCategory": "mplus",
+    "dungeonDifficulties": [
+      "vault+0",
+      "vault+2-3",
+      "vault+4-5",
+      "vault+6",
+      "vault+7-9",
+      "vault+10-13"
+    ]
+  },
   "dungeonCategories": [
     {
       "key": "mplus",
@@ -115,18 +160,46 @@
           "sortOrder": 11
         },
         {
-          "key": "vault+10-13",
-          "label": "Vault +10-13",
-          "track": "Myth",
-          "level": 1,
+          "key": "vault+0",
+          "label": "Vault M0",
+          "track": "Champion",
+          "level": 4,
           "sortOrder": 12
+        },
+        {
+          "key": "vault+2-3",
+          "label": "Vault +2-3",
+          "track": "Champion",
+          "level": 5,
+          "sortOrder": 13
+        },
+        {
+          "key": "vault+4-5",
+          "label": "Vault +4-5",
+          "track": "Champion",
+          "level": 6,
+          "sortOrder": 14
+        },
+        {
+          "key": "vault+6",
+          "label": "Vault +6",
+          "track": "Hero",
+          "level": 3,
+          "sortOrder": 15
         },
         {
           "key": "vault+7-9",
           "label": "Vault +7-9",
           "track": "Hero",
           "level": 4,
-          "sortOrder": 13
+          "sortOrder": 16
+        },
+        {
+          "key": "vault+10-13",
+          "label": "Vault +10-13",
+          "track": "Myth",
+          "level": 1,
+          "sortOrder": 17
         }
       ]
     },
@@ -452,6 +525,7 @@
     "2": 1,
     "11": 1
   },
+  "vaultSocketInventoryTypes": [1, 2, 6, 9, 11],
   "raidDifficultyTracks": {
     "lfr": "Veteran",
     "normal": "Champion",
@@ -529,6 +603,22 @@
       "level": 2
     },
     "mythic+10": {
+      "track": "Hero",
+      "level": 3
+    },
+    "vault+0": {
+      "track": "Champion",
+      "level": 4
+    },
+    "vault+2-3": {
+      "track": "Champion",
+      "level": 5
+    },
+    "vault+4-5": {
+      "track": "Champion",
+      "level": 6
+    },
+    "vault+6": {
       "track": "Hero",
       "level": 3
     },

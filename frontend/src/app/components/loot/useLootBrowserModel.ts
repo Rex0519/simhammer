@@ -1,8 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLanguage } from '../../lib/i18n';
 import { useItemNames } from '../../lib/useItemInfo';
 import {
   categoryDetails,
+  effectiveDifficultyKeys,
+  rankTrackName,
+  selectBonusRollTier,
   selectLootCategory,
   selectLootDifficulty,
   type LootCatalog,
@@ -10,7 +13,10 @@ import {
 } from './lootConfiguration';
 import { useDropFinderData } from './useDropFinderData';
 import { useLootSelection } from './useLootSelection';
-import { dropUid, getTrackInfo } from './dropUtils';
+import { dropUid, effectiveUpgradeLevel, getTrackInfo, resolveUpgrade } from './dropUtils';
+import { bossKey, poolSources } from './lootSources';
+import { readDropFinderPrefs, restoreConfiguration, writeDropFinderPrefs } from './dropFinderPrefs';
+import { isAlreadyOwned, type OwnedItem } from './ownedDrops';
 import { compareSlots } from './slotOrder';
 import { embellishmentCapReached } from './lootTableModel';
 import { buildLootItemRow } from './lootItemRowModel';
@@ -21,10 +27,18 @@ import { VOID_FORGE_ENABLED } from '../../lib/featureFlags';
 export type LootSubmission = {
   drop_items: DropItemPayload[];
   preferred_crafted_stats?: [number, number];
+  /** Raise equipped gear to this rank on its own track before comparing. */
+  upgrade_equipped_to?: number;
+  /** Gem for sockets the equipped item in that slot does not already cover. */
+  preferred_gem_id?: number;
+  add_vault_socket?: boolean;
+  /** Sim every combo at the selected precision instead of pruning to the top few. */
+  force_single_pass?: boolean;
 };
 export function useLootBrowserModel(
   catalog: LootCatalog,
-  character: ReturnType<typeof parseLootCharacter>
+  character: ReturnType<typeof parseLootCharacter>,
+  owned: Map<string, OwnedItem> = new Map()
 ) {
   const { t, locale } = useLanguage();
   useItemNames(); // Name arrival re-prepares rows before the table filters them.
@@ -34,14 +48,23 @@ export function useLootBrowserModel(
   );
   const [includeVoidForge, setIncludeVoidForge] = useState(false);
   const [includeCatalyst, setIncludeCatalyst] = useState(false);
+  const [upgradeEquipped, setUpgradeEquipped] = useState(false);
+  const [preferredGemId, setPreferredGemId] = useState<number | null>(null);
+  const [addVaultSocket, setAddVaultSocket] = useState(false);
+  const [forceSinglePass, setForceSinglePass] = useState(true);
   const [preferredStats, setPreferredStats] = useState<[number, number]>(DEFAULT_PREFERRED_STATS);
   const [embellishmentPicks, setEmbellishmentPicks] = useState<Record<number, number>>({});
+  // The setup outlives the session it was made in. Reading storage during render
+  // would break hydration, so defaults mount first and the saved setup lands in
+  // the effect below — which is also what makes pasting a character harmless:
+  // the remount that follows re-reads it.
+  const [hydrated, setHydrated] = useState(false);
   const details = useMemo(
     () => categoryDetails(catalog, configuration.category),
     [catalog, configuration.category]
   );
   const query = useDropFinderData({
-    source: details.source,
+    sources: details.sources,
     className: character.className,
     specs: [...activeSpecs].sort((a, b) =>
       a === character.specName ? -1 : b === character.specName ? 1 : a.localeCompare(b)
@@ -50,39 +73,114 @@ export function useLootBrowserModel(
     catalyst: !details.isCrafted && includeCatalyst,
   });
   const drops = query.status === 'success' ? query.data : null;
-  // Raids and dungeons index different maps. Passing the raid key as the dungeon
-  // key too lets `dungeon_info` shadow `difficulty_info` whenever the two share a
-  // name — a raid Mythic selection then resolves on the Mythic-dungeon (M0) track.
-  const dungeonDiff = details.isRaid ? '' : configuration.difficulty;
+  // Raids and dungeons index different maps; only Bonus Rolls selects both.
+  const { raidDiff, dungeonDiff } = effectiveDifficultyKeys(configuration, details);
   const filtered = Object.entries(drops ?? {}).flatMap(([slot, items]) =>
     items
       .filter(
         (item) =>
+          // Bonus Rolls spans two pools, so it has no single instance pool to
+          // narrow against; the tier filter below is what bounds it.
+          details.isBonusRoll ||
           details.poolOnly ||
           (configuration.pool.size > 0 &&
             (configuration.pool.has(String(item.instance_id)) ||
               item.instance_id === Number(details.source)))
       )
-      .filter(
-        (item) =>
-          !item.is_void_forge || getTrackInfo(item, configuration.difficulty, dungeonDiff) !== null
+      .filter((item) =>
+        // For Bonus Rolls, carrying an entry for a selected tier IS eligibility:
+        // it drops the half whose tier is None, raid trash (which cannot be
+        // rolled on), and anything the season's ladders do not price.
+        details.isBonusRoll
+          ? getTrackInfo(item, raidDiff, dungeonDiff) !== null
+          : !item.is_void_forge || getTrackInfo(item, raidDiff, dungeonDiff) !== null
       )
       .map((item) => ({ item, slot, uid: dropUid(item) }))
   );
   const availableBySlot: Record<string, string[]> = {};
   for (const entry of filtered) (availableBySlot[entry.slot] ??= []).push(entry.uid);
+  // Gear the character has nothing to gain from: still listed, but left out of
+  // the run unless it is ticked back on.
+  const ownedUids = filtered
+    .filter(({ item }) => {
+      const track = getTrackInfo(item, raidDiff, dungeonDiff);
+      return isAlreadyOwned(
+        item,
+        track?.track,
+        resolveUpgrade(
+          item,
+          raidDiff,
+          dungeonDiff,
+          configuration.upgradeLevel,
+          catalog.upgradeTracks
+        ).ilvl,
+        owned
+      );
+    })
+    .map((entry) => entry.uid);
+  const ownedSet = new Set(ownedUids);
+  // Which boss each row comes from, so a source can be switched off without the
+  // selection having to know what a boss is.
+  const sourceByUid: Record<string, string> = {};
+  for (const entry of filtered) sourceByUid[entry.uid] = bossKey(entry.item);
   const selection = useLootSelection(
     query.datasetId + (query.status === 'success' ? ':ready' : ':pending'),
-    availableBySlot
+    availableBySlot,
+    ownedUids,
+    sourceByUid
   );
-  const visible = filtered.filter((entry) => !selection.excludedSlots.has(entry.slot));
+  const visible = filtered.filter(
+    (entry) =>
+      !selection.excludedSlots.has(entry.slot) &&
+      !selection.excludedSources.has(sourceByUid[entry.uid])
+  );
+  const restoreFilters = selection.restoreFilters;
+  useEffect(() => {
+    const saved = readDropFinderPrefs();
+    setHydrated(true);
+    if (!saved) return;
+    const restored = restoreConfiguration(catalog, saved);
+    if (restored) setConfiguration(restored);
+    setIncludeVoidForge(saved.includeVoidForge);
+    setIncludeCatalyst(saved.includeCatalyst);
+    setUpgradeEquipped(saved.upgradeEquipped);
+    setAddVaultSocket(saved.addVaultSocket);
+    setForceSinglePass(saved.forceSinglePass);
+    setPreferredGemId(saved.preferredGemId);
+    if (saved.preferredStats) setPreferredStats(saved.preferredStats);
+    restoreFilters(saved.excludedSlots, saved.excludedSources);
+    // Mount only: a later write must not read itself back in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const savedSetup = JSON.stringify({
+    category: configuration.category,
+    difficulty: configuration.difficulty,
+    dungeonDifficulty: configuration.dungeonDifficulty,
+    upgradeLevel: configuration.upgradeLevel,
+    pool: [...configuration.pool],
+    includeVoidForge,
+    includeCatalyst,
+    upgradeEquipped,
+    addVaultSocket,
+    forceSinglePass,
+    preferredGemId,
+    preferredStats,
+    excludedSlots: [...selection.excludedSlots],
+    excludedSources: [...selection.excludedSources],
+  });
+  useEffect(() => {
+    // Not before the saved setup has been read, or the defaults this mount
+    // started with would overwrite it.
+    if (!hydrated) return;
+    writeDropFinderPrefs(JSON.parse(savedSetup));
+  }, [hydrated, savedSetup]);
   // Eligibility is per item (backend `accepts_preferred_stats`), not per category:
   // Rare and PVP profession pools carry flexible-stat gear too, so a raid/crafted
   // whitelist would silently drop the pair for them.
   const usesPreferredStats = filtered.some((entry) => entry.item.accepts_preferred_stats);
   const preferredPair = usesPreferredStats ? preferredStats : undefined;
   const itemConfiguration = {
-    difficulty: configuration.difficulty,
+    difficulty: raidDiff,
     dungeonDiff,
     upgradeLevel: configuration.upgradeLevel,
     upgradeTracks: catalog.upgradeTracks,
@@ -110,10 +208,12 @@ export function useLootBrowserModel(
     configuration: resolveDropConfiguration(entry.item, itemConfiguration),
   }));
   const table = {
-    headerLabel: details.isRaid
-      ? t('loot.allRaids')
-      : (catalog.instances.find((instance) => String(instance.id) === details.source)?.name ??
-        t('loot.allDungeons')),
+    headerLabel: details.isBonusRoll
+      ? t('loot.bonusRolls')
+      : details.isRaid
+        ? t('loot.allRaids')
+        : (catalog.instances.find((instance) => String(instance.id) === details.source)?.name ??
+          t('loot.allDungeons')),
     hasEmbellishmentColumn: embellishmentOptions !== undefined,
     embellishmentLimitReached,
     rows: prepared.map(({ item, slot, configuration }) =>
@@ -125,6 +225,7 @@ export function useLootBrowserModel(
         selected: selection.selected,
         embellishmentOptions,
         embellishmentPicks,
+        owned: ownedSet.has(dropUid(item)),
       })
     ),
   };
@@ -139,15 +240,33 @@ export function useLootBrowserModel(
       };
       return dropPayload(candidate, configuration);
     });
+  // The rank the run actually tests its candidates at, which is what the equipped
+  // baseline has to be raised to. The control's own value is 0 ("Base") for raids
+  // and bonus rolls, and sending that raised nothing at all; each candidate's own
+  // drop rank is the floor, and the highest of them is the shared baseline.
+  const testedUpgradeRank = Math.max(
+    0,
+    ...dropItems.map((item) =>
+      effectiveUpgradeLevel(
+        item,
+        raidDiff,
+        dungeonDiff,
+        configuration.upgradeLevel,
+        catalog.upgradeTracks
+      )
+    )
+  );
   const submission: LootSubmission | null = dropItems.length
     ? {
         drop_items: dropItems,
         ...(preferredPair ? { preferred_crafted_stats: preferredPair } : {}),
+        ...(upgradeEquipped ? { upgrade_equipped_to: testedUpgradeRank } : {}),
+        ...(preferredGemId ? { preferred_gem_id: preferredGemId } : {}),
+        ...(addVaultSocket ? { add_vault_socket: true } : {}),
+        force_single_pass: forceSinglePass,
       }
     : null;
-  const trackName = details.difficulties.find(
-    (diff) => diff.key === configuration.difficulty
-  )?.track;
+  const trackName = rankTrackName(configuration, details) ?? undefined;
   const trackLevels = trackName ? catalog.upgradeTracks[trackName] : undefined;
   const currentTrackInfo =
     !details.isCrafted && trackLevels ? { name: trackName!, levels: trackLevels } : null;
@@ -183,6 +302,9 @@ export function useLootBrowserModel(
     activeSpecs,
     toggleSpec,
     availableSlots: Object.keys(availableBySlot).sort(compareSlots),
+    // Only Bonus Rolls draws on more than one instance, so only it offers the
+    // filter; every other category is one raid or one dungeon already.
+    sources: details.isBonusRoll ? poolSources(filtered.map((entry) => entry.item)) : [],
     currentTrackInfo,
     upgradeLevelOptions,
     preferredStats,
@@ -191,11 +313,21 @@ export function useLootBrowserModel(
     setIncludeVoidForge,
     includeCatalyst,
     setIncludeCatalyst,
+    upgradeEquipped,
+    setUpgradeEquipped,
+    preferredGemId,
+    setPreferredGemId,
+    addVaultSocket,
+    setAddVaultSocket,
+    forceSinglePass,
+    setForceSinglePass,
     selectCategory: (category: string) => setConfiguration(selectLootCategory(catalog, category)),
     selectDifficulty: (key: string) => {
       const difficulty = details.difficulties.find((diff) => diff.key === key);
       if (difficulty) setConfiguration((previous) => selectLootDifficulty(previous, difficulty));
     },
+    selectBonusRollTier: (side: 'raid' | 'dungeon', key: string) =>
+      setConfiguration((previous) => selectBonusRollTier(previous, side, key)),
     selectUpgrade: (level: number) => {
       if (upgradeLevelOptions.some((option) => option.key === level))
         setConfiguration((previous) => ({ ...previous, upgradeLevel: level }));

@@ -110,6 +110,31 @@ pub(super) fn generate_droptimizer_input(
     crafted_stats: Option<super::CraftedStats>,
     embellishments: &HashMap<u64, super::CraftedEmbellishment>,
 ) -> (String, usize, HashMap<String, Value>) {
+    generate_droptimizer_input_with(
+        base_profile,
+        drop_items,
+        crafted_stats,
+        embellishments,
+        DropRunOptions::default(),
+    )
+}
+
+/// Run-level knobs that are not carried per item: which gem fills sockets the
+/// player's own gear does not already cover, and whether every eligible
+/// candidate is simmed as if it came with a vault reward's extra socket.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DropRunOptions {
+    pub preferred_gem_id: Option<u64>,
+    pub add_vault_socket: bool,
+}
+
+pub(super) fn generate_droptimizer_input_with(
+    base_profile: &str,
+    drop_items: &[Value],
+    crafted_stats: Option<super::CraftedStats>,
+    embellishments: &HashMap<u64, super::CraftedEmbellishment>,
+    options: DropRunOptions,
+) -> (String, usize, HashMap<String, Value>) {
     let (base_lines, equipped_gear, talents_string, spec) = parse_base_profile(base_profile);
 
     let mut lines: Vec<String> = Vec::new();
@@ -140,7 +165,12 @@ pub(super) fn generate_droptimizer_input(
     // old `slot_inherits` array is now ignored.
     let legacy_enchant_re = Regex::new(r"enchant_id=(\d+)").unwrap();
     let legacy_gem_re = Regex::new(r"gem_id=([\d/]+)").unwrap();
-    let best_gem = most_used_gem(&equipped_gear, &legacy_gem_re);
+    // An explicit pick beats the inferred one, but both only ever fill sockets
+    // the equipped item in that slot does not already cover.
+    let best_gem = options
+        .preferred_gem_id
+        .filter(|&id| id > 0)
+        .or_else(|| most_used_gem(&equipped_gear, &legacy_gem_re));
 
     let mut combo_idx = 2usize;
     for item in drop_items {
@@ -153,6 +183,12 @@ pub(super) fn generate_droptimizer_input(
             .to_string();
         let encounter = item
             .get("encounter")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        // The raid/dungeon the encounter sits in, for the results summary subtext.
+        let instance = item
+            .get("instance_name")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
@@ -294,8 +330,14 @@ pub(super) fn generate_droptimizer_input(
             // list (it does not cap to real sockets), so the count must be accurate.
             // `bonus_ids` holds only inherent bonuses here — crafted stat bonus IDs
             // are kept separate and never reach socket lookups.
+            // A vault reward is simmed as if it HAS a socket — a floor, not an
+            // extra one. Gear that already carries sockets is unaffected, so the
+            // option only ever reaches slots with none of their own.
+            let vault_floor =
+                u64::from(options.add_vault_socket && crate::item_db::takes_vault_socket(inv_type));
             let drop_sockets = crate::item_db::item_socket_count(item_id, &bonus_ids)
-                .max(crate::item_db::inv_type_guaranteed_sockets(inv_type));
+                .max(crate::item_db::inv_type_guaranteed_sockets(inv_type))
+                .max(vault_floor);
             if drop_sockets > 0 {
                 let slot_gems: Vec<u64> = equipped
                     .and_then(|e| legacy_gem_re.captures(e))
@@ -345,6 +387,7 @@ pub(super) fn generate_droptimizer_input(
                 })),
                 "is_kept": false,
                 "encounter": encounter,
+                "instance": instance,
                 "is_void_forge": is_void_forge,
                 "is_catalyst": is_catalyst,
                 "source_item_id": source_item_id,
@@ -356,7 +399,65 @@ pub(super) fn generate_droptimizer_input(
                 "gem_id": applied.gem_ids.first().copied().unwrap_or(0),
                 "gem_ids": applied.gem_ids,
             });
-            combo_metadata.insert(combo_name.clone(), json!([metadata]));
+            combo_metadata.insert(combo_name.clone(), json!([metadata.clone()]));
+            combo_idx += 1;
+
+            // Two on-use trinkets compete for the same windows, and the APL
+            // addresses trinkets by slot, so which one sits where changes what
+            // gets pressed. Sim the same pair the other way round. The pair is
+            // identical, so it needs no fresh validity check.
+            if inv_type != 12 {
+                continue;
+            }
+            let partner_slot = if *slot == "trinket1" {
+                "trinket2"
+            } else {
+                "trinket1"
+            };
+            let Some(partner) = equipped_gear.get(partner_slot) else {
+                continue;
+            };
+            if !crate::item_db::is_on_use_trinket(item_id)
+                || !crate::item_db::is_on_use_trinket(extract_item_id(partner))
+            {
+                continue;
+            }
+            let swapped = format!("Combo {}", combo_idx);
+            lines.push(format!("### {}", swapped));
+            // The drop takes the partner's slot; the partner takes the drop's.
+            lines.push(format!(
+                "profileset.\"{}\"+={}={}",
+                swapped,
+                partner_slot,
+                applied.simc_string()
+            ));
+            lines.push(format!("profileset.\"{}\"+={}={}", swapped, slot, partner));
+            if !talents_string.is_empty() {
+                lines.push(format!(
+                    "profileset.\"{}\"+=talents={}",
+                    swapped, talents_string
+                ));
+            }
+            lines.push(String::new());
+            let mut swapped_metadata = metadata;
+            swapped_metadata["slot"] = json!(partner_slot);
+            // The partner moves into the slot the drop came from. Without it the
+            // combo reads as "the drop in `partner_slot`" — which is also the
+            // plain combo for that slot, so the results view cannot tell the two
+            // gear sets apart and drops one of them.
+            let partner_bonus_ids = extract_bonus_ids(partner);
+            let partner_item = json!({
+                "slot": slot,
+                "item_id": extract_item_id(partner),
+                "ilevel": crate::item_db::resolve_bonuses(&partner_bonus_ids)
+                    .ilevel
+                    .unwrap_or(0),
+                "bonus_ids": partner_bonus_ids,
+                "is_kept": true,
+                "encounter": encounter,
+                "instance": instance,
+            });
+            combo_metadata.insert(swapped.clone(), json!([swapped_metadata, partner_item]));
             combo_idx += 1;
         }
     }
@@ -427,6 +528,68 @@ mod tests {
             "metadata keeps the tier piece id for display"
         );
         assert_eq!(combo[0]["source_item_id"], json!(251199));
+    }
+
+    /// The swap moves the equipped partner into the drop's slot. Without that in
+    /// the metadata the row is indistinguishable from the plain combo for the
+    /// same slot — the results view dedupes on it and throws one sim away.
+    #[test]
+    fn a_swapped_trinket_pair_records_the_partner_it_moved() {
+        crate::test_support::ensure_game_data_loaded();
+        let profile = "deathknight=test
+spec=unholy
+trinket1=,id=249344
+trinket2=,id=270165
+";
+        let mut item = drop(270175, 12, vec![]); // on-use trinket
+        item["encounter"] = json!("Ula'tek");
+
+        let (_, _, metadata) = generate_droptimizer_input(profile, &[item], None, &HashMap::new());
+
+        let swaps: Vec<&Vec<Value>> = metadata
+            .values()
+            .filter_map(|combo| combo.as_array())
+            .filter(|items| items.len() > 1)
+            .collect();
+        // Only a pair of on-use trinkets is worth swapping, so how many combos
+        // this yields follows the equipped gear; what matters is what each says.
+        assert!(
+            !swaps.is_empty(),
+            "an on-use pair must produce a swapped combo"
+        );
+        for items in swaps {
+            assert_eq!(items[0]["item_id"], json!(270175), "the drop stays first");
+            assert_eq!(
+                items[1]["is_kept"],
+                json!(true),
+                "the partner is gear you already own"
+            );
+            assert_ne!(
+                items[1]["slot"], items[0]["slot"],
+                "the partner takes the slot the drop came from"
+            );
+            let partner = items[1]["item_id"].as_u64().unwrap();
+            assert!(
+                partner == 249344 || partner == 270165,
+                "the partner is one of the equipped trinkets, got {partner}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_drops_instance_reaches_the_combo_metadata() {
+        crate::test_support::ensure_game_data_loaded();
+        let profile = "mage=test
+spec=frost
+head=,id=100
+";
+        let mut item = drop(271564, 1, vec![]);
+        item["instance_name"] = json!("The Venomous Abyss");
+
+        let (_, _, metadata) = generate_droptimizer_input(profile, &[item], None, &HashMap::new());
+
+        let combo = metadata.get("Combo 2").expect("missing combo");
+        assert_eq!(combo[0]["instance"], json!("The Venomous Abyss"));
     }
 
     /// Two sources converting to the same tier piece must not produce identical
@@ -1381,5 +1544,261 @@ finger2=,id=102,gem_id=2222\n"; // 2222 is most-used (x2)
         let (_, _, metadata) = generate_droptimizer_input(profile, &drops, None, &HashMap::new());
         let combo = metadata.get("Combo 2").expect("missing combo");
         assert_eq!(combo[0]["encounter"], "Specific Boss Name");
+    }
+
+    /// A bonus-roll reward reaches simc exactly as the browser priced it: the
+    /// flat vault rank for the tier, and the Very Rare override where one
+    /// applies. The generator needs no bonus-roll protocol — it consumes the
+    /// resolved `ilevel` and `bonus_ids` — so this pins that contract.
+    #[test]
+    fn bonus_roll_ranks_reach_the_generated_candidate() {
+        crate::test_support::ensure_game_data_loaded();
+        let profile = "mage=test\nspec=frost\nhead=,id=100\n";
+        // Heroic vault (Myth 1/6), Mythic vault (Myth 6/6), Very Rare override.
+        for (ilvl, bonus_id) in [(318u64, 12849u64), (334, 12854), (344, 13848)] {
+            let mut item = drop(271564, 1, vec![bonus_id]);
+            item["ilevel"] = json!(ilvl);
+            let (input, _, metadata) =
+                generate_droptimizer_input(profile, &[item], None, &HashMap::new());
+            assert!(
+                input.contains(&format!("ilevel={ilvl}")),
+                "candidate must sim at the vault rank, got:\n{input}"
+            );
+            assert!(
+                input.contains(&format!("bonus_id={bonus_id}")),
+                "candidate must carry the tier's bonus, got:\n{input}"
+            );
+            let entry = &metadata.values().next().expect("missing combo")[0];
+            assert_eq!(entry["ilevel"], json!(ilvl), "reported level must agree");
+        }
+    }
+
+    /// The gems the generator actually emits for one slot's candidate.
+    fn gems_of(input: &str, slot: &str) -> Vec<u64> {
+        let needle = format!("{slot}=,");
+        let line = input
+            .lines()
+            .find(|l| l.starts_with("profileset.") && l.contains(&needle))
+            .unwrap_or_else(|| panic!("no candidate line for {slot} in:\n{input}"));
+        line.split(",gem_id=")
+            .nth(1)
+            .map(|tail| {
+                tail.split(',')
+                    .next()
+                    .unwrap_or("")
+                    .split('/')
+                    .filter_map(|g| g.parse().ok())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// "Upgrade all equipped gear to the same level" lifts the character being
+    /// compared against, not the loot. Raidbots does the same before generating
+    /// candidates, which is why its reported gains are smaller.
+    #[test]
+    fn equipped_upgrade_lifts_the_baseline_without_touching_candidates() {
+        crate::test_support::ensure_game_data_loaded();
+        // Equipped neck sits at Hero 4/6 (315); the drop is priced at Myth 1/6 (318).
+        let profile = "deathknight=test\nspec=unholy\nneck=,id=251234,bonus_id=12844\n";
+        let upgraded = crate::item_db::upgrade_simc_input_to_rank(profile, 6);
+        assert!(
+            upgraded.contains("bonus_id=12846"),
+            "equipped neck must reach Hero 6/6, got:\n{upgraded}"
+        );
+
+        let mut item = drop(268250, 2, vec![12849]);
+        item["ilevel"] = json!(318);
+        let (input, _, _) = generate_droptimizer_input(&upgraded, &[item], None, &HashMap::new());
+
+        assert!(
+            input.contains("bonus_id=12846"),
+            "the baseline stays upgraded, got:\n{input}"
+        );
+        assert!(
+            input.contains("bonus_id=12849"),
+            "the candidate keeps the rank it was priced at, got:\n{input}"
+        );
+        assert!(
+            !input.contains("12854"),
+            "the candidate must not be lifted to Myth 6/6, got:\n{input}"
+        );
+    }
+
+    /// Raidbots: "Preferred Gem: used when the Droptimizer item has more sockets
+    /// than your equipped item." It never displaces a gem the player already wears.
+    #[test]
+    fn preferred_gem_only_fills_sockets_the_equipped_item_does_not_cover() {
+        crate::test_support::ensure_game_data_loaded();
+        // Aqirbane Reliquary carries two sockets; the worn neck only one.
+        let profile = "mage=test\nspec=frost\nneck=,id=100,gem_id=240983\n";
+        let gems = gems_of(
+            &generate_droptimizer_input_with(
+                profile,
+                &[drop(268265, 2, vec![])],
+                None,
+                &HashMap::new(),
+                DropRunOptions {
+                    preferred_gem_id: Some(240908),
+                    add_vault_socket: false,
+                },
+            )
+            .0,
+            "neck",
+        );
+        assert_eq!(gems.len(), 2, "the item's own two sockets, got {gems:?}");
+        assert_eq!(gems[0], 240983, "the worn gem keeps the first socket");
+        assert_eq!(
+            gems[1], 240908,
+            "only the uncovered one takes the preference"
+        );
+
+        // A single-socket neck is fully covered by what the player wears, so the
+        // preference is never consulted.
+        let covered = gems_of(
+            &generate_droptimizer_input_with(
+                profile,
+                &[drop(268250, 2, vec![])],
+                None,
+                &HashMap::new(),
+                DropRunOptions {
+                    preferred_gem_id: Some(240908),
+                    add_vault_socket: false,
+                },
+            )
+            .0,
+            "neck",
+        );
+        assert_eq!(covered, vec![240983]);
+    }
+
+    /// "All eligible items will be simmed as if they have a socket" — a floor of
+    /// one, not an extra. Gear that already has sockets keeps exactly what it has,
+    /// so the option only ever reaches slots with none of their own.
+    #[test]
+    fn the_vault_socket_is_a_floor_not_an_extra_socket() {
+        crate::test_support::ensure_game_data_loaded();
+        let profile =
+            "mage=test\nspec=frost\nneck=,id=100,gem_id=240983\nhead=,id=101\nchest=,id=102\n";
+        let with_vault = |item| {
+            generate_droptimizer_input_with(
+                profile,
+                std::slice::from_ref(&item),
+                None,
+                &HashMap::new(),
+                DropRunOptions {
+                    preferred_gem_id: Some(240908),
+                    add_vault_socket: true,
+                },
+            )
+            .0
+        };
+
+        // Head has no socket of its own, so the floor gives it one.
+        assert_eq!(
+            gems_of(&with_vault(drop(268229, 1, vec![])), "head"),
+            vec![240908]
+        );
+        // A neck already carries one; the floor must not add a second.
+        assert_eq!(
+            gems_of(&with_vault(drop(268250, 2, vec![])), "neck"),
+            vec![240983]
+        );
+        // Nor a third on the two-socket neck.
+        assert_eq!(
+            gems_of(&with_vault(drop(268265, 2, vec![])), "neck"),
+            vec![240983, 240908]
+        );
+        // Chest is not an eligible slot at all.
+        assert!(gems_of(&with_vault(drop(268222, 5, vec![])), "chest").is_empty());
+    }
+
+    /// Two on-use trinkets are pressed in an order the APL decides per slot, so
+    /// the same pair is worth simming both ways round. One on-use and one passive
+    /// has no order to get wrong.
+    #[test]
+    fn a_double_on_use_pair_is_simmed_in_both_slot_orders() {
+        crate::test_support::ensure_game_data_loaded();
+        // Light Company Guidon is on-use, Keeper's Seething Core is not.
+        assert!(
+            crate::item_db::is_on_use_trinket(249344),
+            "fixture: t1 is on-use"
+        );
+        assert!(
+            !crate::item_db::is_on_use_trinket(270165),
+            "fixture: t2 is passive"
+        );
+        assert!(
+            crate::item_db::is_on_use_trinket(270168),
+            "fixture: on-use drop"
+        );
+        assert!(
+            !crate::item_db::is_on_use_trinket(270163),
+            "fixture: passive drop"
+        );
+
+        let profile = "deathknight=t\nspec=unholy\ntrinket1=,id=249344\ntrinket2=,id=270165\n";
+        // Each combo's trinket lines, in emission order.
+        let combos_for = |item: Value| -> Vec<Vec<String>> {
+            let (input, _, _) = generate_droptimizer_input(profile, &[item], None, &HashMap::new());
+            let mut combos: Vec<(String, Vec<String>)> = Vec::new();
+            for line in input.lines().filter(|l| l.starts_with("profileset.")) {
+                let Some((name, rest)) = line.trim_start_matches("profileset.").split_once("+=")
+                else {
+                    continue;
+                };
+                if !rest.starts_with("trinket") {
+                    continue;
+                }
+                match combos.last_mut() {
+                    Some((n, entries)) if n == name => entries.push(rest.to_string()),
+                    _ => combos.push((name.to_string(), vec![rest.to_string()])),
+                }
+            }
+            combos.into_iter().map(|(_, entries)| entries).collect()
+        };
+
+        // An on-use drop replacing the passive trinket2 leaves two on-use
+        // trinkets, so that pair is simmed both ways: three combos, not two.
+        let on_use = combos_for(drop(270168, 12, vec![]));
+        assert_eq!(on_use.len(), 3, "got: {on_use:#?}");
+        assert!(on_use[0][0].starts_with("trinket1=,id=270168"));
+        assert_eq!(on_use[0].len(), 1, "the untouched trinket2 stays put");
+        assert!(on_use[1][0].starts_with("trinket2=,id=270168"));
+        assert_eq!(on_use[1].len(), 1, "the untouched trinket1 stays put");
+        // The third holds the same pair as the second, slots reversed.
+        assert_eq!(
+            on_use[2].len(),
+            2,
+            "the partner moves across: {:?}",
+            on_use[2]
+        );
+        assert!(on_use[2][0].starts_with("trinket1=,id=270168"));
+        assert!(on_use[2][1].starts_with("trinket2=,id=249344"));
+
+        // A passive drop can never form a double on-use pair.
+        let passive = combos_for(drop(270163, 12, vec![]));
+        assert_eq!(passive.len(), 2, "got: {passive:#?}");
+        assert!(passive.iter().all(|c| c.len() == 1), "nothing to reorder");
+    }
+
+    /// With no explicit pick the inferred gem still fills the floor's socket, so
+    /// the option is additive rather than a switch that turns gemming on."""
+    #[test]
+    fn without_a_preference_the_most_used_equipped_gem_fills_the_vault_socket() {
+        crate::test_support::ensure_game_data_loaded();
+        let profile =
+            "mage=test\nspec=frost\nneck=,id=100,gem_id=240983\nfinger1=,id=102,gem_id=240983\n";
+        let (input, _, _) = generate_droptimizer_input_with(
+            profile,
+            &[drop(268229, 1, vec![])],
+            None,
+            &HashMap::new(),
+            DropRunOptions {
+                preferred_gem_id: None,
+                add_vault_socket: true,
+            },
+        );
+        assert_eq!(gems_of(&input, "head"), vec![240983]);
     }
 }

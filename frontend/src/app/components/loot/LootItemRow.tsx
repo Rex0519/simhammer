@@ -27,12 +27,21 @@ export default function LootItemRow({
   // limit categories that would reject it live in the item's own bonusLists and
   // never reach the submitted bonus_ids, so nothing downstream would catch it.
   const capBlocked = row.embellished && embellishmentLimitReached && !row.selected;
+  // Gear already owned on this track or better can never be worth simming, so
+  // the row is inert rather than merely unticked. Its reason outranks the cap's:
+  // it is permanent, where the cap depends on what else is picked.
+  const blocked = capBlocked || row.variants.owned === true;
+  const blockedReason = row.variants.owned
+    ? t('loot.alreadyOwnedReason')
+    : capBlocked
+      ? t('loot.embellishmentLimit')
+      : undefined;
   return (
     <div
-      onClick={() => !capBlocked && onToggle(row.uid)}
-      title={capBlocked ? t('loot.embellishmentLimit') : undefined}
+      onClick={() => !blocked && onToggle(row.uid)}
+      title={blockedReason}
       className={`group grid grid-cols-12 items-center px-4 py-2 transition-colors ${
-        capBlocked
+        blocked
           ? 'cursor-not-allowed opacity-50'
           : 'cursor-pointer hover:bg-surface-container-high/40'
       }`}
@@ -42,7 +51,7 @@ export default function LootItemRow({
           variant="primary"
           size="sm"
           checked={row.selected}
-          disabled={capBlocked}
+          disabled={blocked}
           onChange={() => onToggle(row.uid)}
           aria-label={row.name}
         />
@@ -98,6 +107,11 @@ export default function LootItemRow({
             <VariantBadges item={row.variants} />
           </div>
           {row.source && <p className="text-[10px] text-on-surface-variant/60">{row.source}</p>}
+          {row.catalystSource && (
+            <p title={t('loot.catalystFromReason')} className="text-[10px] italic text-sky-300/70">
+              {t('loot.catalystFrom', { item: row.catalystSource })}
+            </p>
+          )}
         </div>
       </div>
 

@@ -50,6 +50,9 @@ const MANIFEST = {
   // Season config — our own file, keep as-is
   "season-config.json": null,
 
+  // Bonus roll sources — small file, keep as-is
+  "bonus-roll-sources.json": null,
+
   // Talent trees — keep as-is (keyed by specId)
   "talents.json": null,
 
@@ -100,10 +103,16 @@ const ITEM_BASE_FIELDS = [
   "itemSetId",        // catalyst tier set detection
   "allowableClasses", // catalyst class filtering
   "itemLimit",        // inherent embellishment / unique-category constraint
+  "onUseTrinket",     // a double on-use pair is simmed in both slot orders
 ];
 
 // Additional fields needed for droppable items (droptimizer, spec filtering)
-const ITEM_DROP_FIELDS = [...ITEM_BASE_FIELDS, "sources", "specs", "profession"];
+const ITEM_DROP_FIELDS = [
+  ...ITEM_BASE_FIELDS,
+  "sources",
+  "specs",
+  "profession",
+];
 
 /**
  * Compact equippable-items-full.json:

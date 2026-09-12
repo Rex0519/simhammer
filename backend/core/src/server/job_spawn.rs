@@ -246,6 +246,7 @@ pub(crate) async fn submit_profileset_sim(
     repo: &JobRepo,
     simc_bins: &SimcBinaries,
     log_buffer: &Arc<LogBuffer>,
+    force_single_pass: bool,
 ) -> HttpResponse {
     // Reject an invalid simc_branch BEFORE inserting the Job — otherwise a bad
     // local branch leaves an orphan Pending row that only fails asynchronously.
@@ -255,7 +256,14 @@ pub(crate) async fn submit_profileset_sim(
 
     let batch_id = options.batch_id.clone();
     match insert_and_spawn_profileset_job(
-        submission, options, batch_id, provider, &avail, repo, log_buffer, false,
+        submission,
+        options,
+        batch_id,
+        provider,
+        &avail,
+        repo,
+        log_buffer,
+        force_single_pass,
     )
     .await
     {
@@ -300,8 +308,8 @@ async fn insert_and_spawn_profileset_job(
         &options_json,
     );
     options_json["prebuilt"] = serde_json::json!(true);
-    // Roster loot reports run every combo in one pass at the user target_error
-    // (no staging). Only stamped when requested, so other sim types are unaffected.
+    // Drop Finder runs and roster loot reports sim every combo in one pass at the
+    // user target_error (no staging). Only stamped when requested.
     if force_single_pass {
         options_json["force_single_pass"] = serde_json::json!(true);
     }

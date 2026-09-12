@@ -372,6 +372,15 @@ pub(super) async fn get_season_config() -> HttpResponse {
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
 
+    let raid_vault_difficulties: Vec<RaidVaultDifficulty> = cfg
+        .get("raidVaultDifficulties")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+
+    let bonus_roll: Option<BonusRollConfig> = cfg
+        .get("bonusRoll")
+        .and_then(|v| serde_json::from_value(v.clone()).ok());
+
     let fixed_difficulty_encounters: Vec<i64> = cfg
         .get("encounterFixedDifficulty")
         .and_then(|v| v.as_object())
@@ -389,6 +398,8 @@ pub(super) async fn get_season_config() -> HttpResponse {
         season,
         raid_difficulties,
         dungeon_categories,
+        raid_vault_difficulties,
+        bonus_roll,
         raid_instance_ids: game_data::season_raid_instance_ids(),
         fixed_difficulty_encounters,
         crafted_secondary_stats,

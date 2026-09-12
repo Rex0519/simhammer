@@ -47,12 +47,23 @@ static ENCHANTS: OnceCell<HashMap<u64, Value>> = OnceCell::new();
 static ENCHANTS_BY_ITEM_ID: OnceCell<HashMap<u64, Value>> = OnceCell::new();
 static BONUSES: OnceCell<HashMap<u64, Value>> = OnceCell::new();
 static UPGRADE_MAX: OnceCell<HashMap<u64, u64>> = OnceCell::new();
+/// Upgrade bonus id → (group, level), and the inverse. Together they let a
+/// bonus be moved to a named rank on its own track, not just to the track max.
+static UPGRADE_LEVEL_OF: OnceCell<HashMap<u64, (u64, u64)>> = OnceCell::new();
+static UPGRADE_BY_GROUP_LEVEL: OnceCell<HashMap<(u64, u64), u64>> = OnceCell::new();
 static INSTANCES: OnceCell<Vec<Value>> = OnceCell::new();
 static DROPS_BY_ENCOUNTER: OnceCell<HashMap<i64, Vec<Value>>> = OnceCell::new();
+/// Raid encounter IDs a bonus roll can be spent on (from bonus-roll-sources).
+/// Raid trash has no bonus roll, so it never appears here.
+static BONUS_ROLL_RAID_ENCOUNTERS: OnceCell<HashSet<i64>> = OnceCell::new();
 /// Base gem-socket count per item_id (from encounter-items `socketInfo`).
 static BASE_SOCKETS_BY_ITEM: OnceCell<HashMap<u64, u64>> = OnceCell::new();
 /// Item's own `bonusLists` per item_id (from encounter-items).
 static INHERENT_BONUSES_BY_ITEM: OnceCell<HashMap<u64, Vec<u64>>> = OnceCell::new();
+/// (tier token item id, class id) → the tier piece that token grants that class.
+/// A token is not equippable, so a drop list showing one would offer something
+/// nobody can wear.
+static TIER_TOKEN_TARGETS: OnceCell<HashMap<(u64, u64), Value>> = OnceCell::new();
 /// Items whose secondaries are unallocated placeholders (stat ids 24/25) and so
 /// need an explicit `crafted_stats=` pair, else simc resolves them to "unknown".
 static FLEXIBLE_STAT_ITEMS: OnceCell<HashSet<u64>> = OnceCell::new();
@@ -262,9 +273,12 @@ pub fn load(data_dir: &Path) -> Result<(), String> {
         let _ = CURRENT_SEASON_ID.set(max_season_id);
         let mut upgrade_max: HashMap<u64, u64> = HashMap::new();
         for members in groups.values() {
+            // Lowest id at the top level, for the same reason as the index below:
+            // several bonuses can share a level and the winner must not depend on
+            // which one the hash map yielded last.
             let max_bonus_id = members
                 .iter()
-                .max_by_key(|(_, level)| *level)
+                .max_by_key(|(id, level)| (*level, std::cmp::Reverse(*id)))
                 .map(|(id, _)| *id)
                 .unwrap_or(0);
             for (bid, _) in members {
@@ -276,6 +290,15 @@ pub fn load(data_dir: &Path) -> Result<(), String> {
             map.len(),
             groups.len()
         );
+        let mut level_of: HashMap<u64, (u64, u64)> = HashMap::new();
+        for (group, members) in &groups {
+            for (bid, level) in members {
+                level_of.insert(*bid, (*group, *level));
+            }
+        }
+        let by_group_level = index_by_group_level(&groups);
+        let _ = UPGRADE_LEVEL_OF.set(level_of);
+        let _ = UPGRADE_BY_GROUP_LEVEL.set(by_group_level);
         let _ = BONUSES.set(map);
         let _ = UPGRADE_MAX.set(upgrade_max);
 
@@ -398,6 +421,7 @@ pub fn load(data_dir: &Path) -> Result<(), String> {
     let mut base_sockets: HashMap<u64, u64> = HashMap::new();
     let mut inherent_bonuses: HashMap<u64, Vec<u64>> = HashMap::new();
     let mut flexible_stat_items: HashSet<u64> = HashSet::new();
+    let mut token_targets: HashMap<(u64, u64), Value> = HashMap::new();
     if encounter_items_path.exists() {
         let data: Vec<Value> = read_json_vec(&encounter_items_path)?;
         println!("Loaded {} encounter items", data.len());
@@ -446,11 +470,44 @@ pub fn load(data_dir: &Path) -> Result<(), String> {
                 }
             }
         }
+
+        // Tier tokens are not equippable: each grants one tier piece per class it
+        // serves. Index what each gives whom, so the loot table can show the piece
+        // the boss actually hands this character.
+        let by_id: HashMap<u64, &Value> = data
+            .iter()
+            .filter_map(|item| Some((item.get("id")?.as_u64()?, item)))
+            .collect();
+        for token in &data {
+            let (Some(token_id), Some(contains)) = (
+                token.get("id").and_then(|v| v.as_u64()),
+                token.get("contains").and_then(|v| v.as_array()),
+            ) else {
+                continue;
+            };
+            for target in contains
+                .iter()
+                .filter_map(|v| v.as_u64())
+                .filter_map(|id| by_id.get(&id))
+            {
+                for class_id in target
+                    .get("allowableClasses")
+                    .and_then(|v| v.as_array())
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|v| v.as_u64())
+                {
+                    token_targets.insert((token_id, class_id), (*target).clone());
+                }
+            }
+        }
+        println!("Indexed {} tier token conversions", token_targets.len());
     }
     println!("Indexed drops for {} encounters", drops.len());
     let _ = DROPS_BY_ENCOUNTER.set(drops);
     let _ = BASE_SOCKETS_BY_ITEM.set(base_sockets);
     let _ = INHERENT_BONUSES_BY_ITEM.set(inherent_bonuses);
+    let _ = TIER_TOKEN_TARGETS.set(token_targets);
     let _ = FLEXIBLE_STAT_ITEMS.set(flexible_stat_items);
 
     // item-socket-overrides.json — our own committed file (crate-root fallback,
@@ -524,6 +581,29 @@ pub fn load(data_dir: &Path) -> Result<(), String> {
         let _ = FIXED_DIFFICULTY_BONUSES.set(fixed_difficulty_bonuses);
         let _ = SEASON_CONFIG.set(cfg);
     }
+
+    // bonus-roll-sources.json — the content a bonus roll may be spent on. Only
+    // the raid encounters are indexed: the M+ side is already bounded by its
+    // pool. An absent file leaves the set empty, which drops the raid vault
+    // tiers entirely rather than paying them on encounters that cannot be rolled.
+    let bonus_roll_path = data_dir.join("bonus-roll-sources.json");
+    let mut bonus_roll_raid_encounters: HashSet<i64> = HashSet::new();
+    if bonus_roll_path.exists() {
+        let raw: HashMap<String, Value> = read_json_map_str(&bonus_roll_path)?;
+        for entry in raw.values() {
+            if entry.get("contentType").and_then(|v| v.as_str()) != Some("raid") {
+                continue;
+            }
+            if let Some(eid) = entry.get("encounterId").and_then(|v| v.as_i64()) {
+                bonus_roll_raid_encounters.insert(eid);
+            }
+        }
+        println!(
+            "Loaded {} bonus-roll raid encounters",
+            bonus_roll_raid_encounters.len()
+        );
+    }
+    let _ = BONUS_ROLL_RAID_ENCOUNTERS.set(bonus_roll_raid_encounters);
 
     // item-limit-categories.json — build bonus_id → (category_id, max_quantity) lookup
     let limit_cats_path = data_dir.join("item-limit-categories.json");
@@ -969,7 +1049,10 @@ pub fn crafted_embellishments() -> &'static [EmbellishmentInfo] {
                 else {
                     continue;
                 };
-                for sid in slot_ids.iter().filter_map(|s| s.get("id").and_then(|i| i.as_u64())) {
+                for sid in slot_ids
+                    .iter()
+                    .filter_map(|s| s.get("id").and_then(|i| i.as_u64()))
+                {
                     if let Some(rids) = emb_slots.get(&sid) {
                         for rid in rids {
                             items_by_reagent.entry(*rid).or_default().push(*item_id);
@@ -993,7 +1076,11 @@ pub fn crafted_embellishments() -> &'static [EmbellishmentInfo] {
                 // process restarts (HashMap iteration order is otherwise unstable).
                 tiers.sort_by_key(|(rid, r)| {
                     (
-                        std::cmp::Reverse(r.get("craftingQuality").and_then(|q| q.as_u64()).unwrap_or(0)),
+                        std::cmp::Reverse(
+                            r.get("craftingQuality")
+                                .and_then(|q| q.as_u64())
+                                .unwrap_or(0),
+                        ),
                         **rid,
                     )
                 });
@@ -1186,6 +1273,20 @@ pub fn inv_type_guaranteed_sockets(inv_type: u64) -> u64 {
         .unwrap_or(0)
 }
 
+/// Whether this slot can carry the extra socket a vault reward comes with.
+/// Empty config means no slot does, so the option is simply inert.
+pub fn takes_vault_socket(inv_type: u64) -> bool {
+    season_cfg()
+        .get("vaultSocketInventoryTypes")
+        .and_then(|v| v.as_array())
+        .is_some_and(|types| {
+            types
+                .iter()
+                .filter_map(|v| v.as_u64())
+                .any(|t| t == inv_type)
+        })
+}
+
 /// Current season ID (highest seasonId found in upgrade bonuses).
 pub fn current_season_id() -> u64 {
     CURRENT_SEASON_ID.get().copied().unwrap_or(0)
@@ -1233,6 +1334,23 @@ pub fn upgrade_track_max() -> u64 {
     } else {
         6
     }
+}
+
+/// Index upgrade bonuses by `(group, level)`. bonuses.json lists more than one
+/// bonus id for some pairs, so the lowest wins — the map is walked in hash order
+/// and last-write-wins would resolve the same rank to a different id from one
+/// load to the next.
+fn index_by_group_level(groups: &HashMap<u64, Vec<(u64, u64)>>) -> HashMap<(u64, u64), u64> {
+    let mut by_group_level: HashMap<(u64, u64), u64> = HashMap::new();
+    for (group, members) in groups {
+        for (bid, level) in members {
+            by_group_level
+                .entry((*group, *level))
+                .and_modify(|chosen| *chosen = (*chosen).min(*bid))
+                .or_insert(*bid);
+        }
+    }
+    by_group_level
 }
 
 // ---- Bonus Resolution ----
@@ -1304,6 +1422,24 @@ pub(crate) fn resolve_bonuses(bonus_ids: &[u64]) -> BonusResolved {
 // ---- Item Lookups ----
 
 /// Get the raw JSON entry for an item from the DB.
+/// The tier piece a token grants this class. `None` when the item is not a tier
+/// token, the class is unknown, or the token does not serve that class — in each
+/// case the caller keeps the item it already had.
+pub fn tier_token_target(item: &Value, class_name: Option<&str>) -> Option<&'static Value> {
+    let token_id = item.get("id").and_then(|v| v.as_u64())?;
+    let class_id = crate::types::class_data::class_wow_id(class_name?)?;
+    TIER_TOKEN_TARGETS.get()?.get(&(token_id, class_id))
+}
+
+/// Whether this trinket carries an on-use effect. Two of them compete for the
+/// same windows, so the order they sit in changes what the rotation presses.
+pub fn is_on_use_trinket(item_id: u64) -> bool {
+    get_raw_item(item_id)
+        .and_then(|item| item.get("onUseTrinket"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
 pub(crate) fn get_raw_item(item_id: u64) -> Option<&'static Value> {
     // Use the cell directly rather than `items()` so unit tests that don't
     // exercise item lookups (and therefore don't load game data) can still
@@ -1381,28 +1517,41 @@ pub fn item_limit_categories_for(item_id: u64, bonus_ids: &[u64]) -> HashMap<u64
 }
 
 /// True gem-socket count for an item as it should be simmed, given the bonus IDs
-/// it drops with. The max of three signals: the item's base sockets (from item
-/// data), the sockets granted by `bonus_ids`, and any curated override.
+/// it drops with. Sockets come from two ADDITIVE places — the item's own socket
+/// data, and any socket-granting bonus, whether inherent to the item or
+/// requested alongside it. A neck carrying both really does drop with two.
+///
+/// The item's own `bonusLists` count here and nowhere else: `item_effect_bonus_ids`
+/// deliberately passes over them, leaving sockets to this function.
 ///
 /// SimC applies exactly the gems we emit — it does NOT cap to the item's real
-/// socket count — so this number must never exceed the truth. Each signal is
-/// individually ≤ the true total, so their max is safe; the override exists to
-/// reach the true total for items whose guaranteed sockets the extracted data
-/// under-reports (e.g. Amulet of the Abyssal Hymn, 1 recorded socket but 2
-/// in-game).
+/// socket count — so this number must never exceed the truth. Bonus IDs are
+/// deduped before resolving, since `resolve_bonuses` SUMS socket grants and one
+/// bonus can appear both inherently and in the request. The curated override
+/// remains an escape hatch for items the extracted data still under-reports.
 pub fn item_socket_count(item_id: u64, bonus_ids: &[u64]) -> u64 {
     let base = BASE_SOCKETS_BY_ITEM
         .get()
         .and_then(|m| m.get(&item_id))
         .copied()
         .unwrap_or(0);
-    let from_bonus = resolve_bonuses(bonus_ids).sockets.unwrap_or(0);
+    let mut granting: Vec<u64> = INHERENT_BONUSES_BY_ITEM
+        .get()
+        .and_then(|m| m.get(&item_id))
+        .cloned()
+        .unwrap_or_default();
+    for id in bonus_ids {
+        if !granting.contains(id) {
+            granting.push(*id);
+        }
+    }
+    let from_bonus = resolve_bonuses(&granting).sockets.unwrap_or(0);
     let from_override = SOCKET_OVERRIDES
         .get()
         .and_then(|m| m.get(&item_id))
         .copied()
         .unwrap_or(0);
-    base.max(from_bonus).max(from_override)
+    (base + from_bonus).max(from_override)
 }
 
 /// Get inventory type for an item (e.g. 1=head, 7=legs, 13=one-hand, 17=two-hand).
@@ -1717,6 +1866,45 @@ pub fn upgrade_bonus_ids_to_max(bonus_ids: &[u64]) -> Vec<u64> {
         .collect()
 }
 
+/// The bonus that puts `bonus_id` at `rank` on its own track, clamped to that
+/// track's max. Returns `None` when the bonus is not an upgrade bonus, or when
+/// the item already sits at or above `rank` — "upgrade up to" never walks an
+/// item back down.
+pub fn upgrade_bonus_to_rank(bonus_id: u64, rank: u64) -> Option<u64> {
+    let level_of = UPGRADE_LEVEL_OF.get()?;
+    let (group, level) = *level_of.get(&bonus_id)?;
+    let max_level = upgrade_max()
+        .get(&bonus_id)
+        .and_then(|top| level_of.get(top))
+        .map(|(_, top_level)| *top_level)?;
+    let target = rank.min(max_level);
+    if target <= level {
+        return None;
+    }
+    UPGRADE_BY_GROUP_LEVEL.get()?.get(&(group, target)).copied()
+}
+
+/// Raise every upgrade bonus in a SimC profile to `rank` on its own track. Rank
+/// 0 is a no-op. Unlike `upgrade_simc_input`, which always goes to the track
+/// max, this lets the equipped profile sit at the same rank the run is testing.
+pub fn upgrade_simc_input_to_rank(simc_input: &str, rank: u64) -> String {
+    if rank == 0 {
+        return simc_input.to_string();
+    }
+    RE_BONUS_ID
+        .replace_all(simc_input, |caps: &regex::Captures| {
+            let raw = &caps[1];
+            let sep = if raw.contains('/') { "/" } else { ":" };
+            let ids = raw
+                .split(&['/', ':'][..])
+                .filter_map(|s| s.parse::<u64>().ok())
+                .map(|id| upgrade_bonus_to_rank(id, rank).unwrap_or(id).to_string())
+                .collect::<Vec<_>>();
+            format!("bonus_id={}", ids.join(sep))
+        })
+        .to_string()
+}
+
 pub fn upgrade_simc_input(simc_input: &str) -> String {
     RE_BONUS_ID
         .replace_all(simc_input, |caps: &regex::Captures| {
@@ -2024,6 +2212,22 @@ pub fn encounter_difficulty_override(encounter_id: i64) -> Option<&'static Value
         .and_then(|m| m.get(encounter_id.to_string()))
 }
 
+/// Whether a raid bonus roll can be spent on this encounter. False for raid
+/// trash, and for every encounter when the data build has no bonus-roll extract.
+pub fn is_bonus_roll_raid_encounter(encounter_id: i64) -> bool {
+    BONUS_ROLL_RAID_ENCOUNTERS
+        .get()
+        .is_some_and(|set| set.contains(&encounter_id))
+}
+
+/// This season's raid bonus-roll tiers, in config order.
+pub fn raid_vault_difficulties() -> Vec<crate::types::season::RaidVaultDifficulty> {
+    season_cfg()
+        .get("raidVaultDifficulties")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default()
+}
+
 pub fn dungeon_normal_ilvl() -> u64 {
     season_cfg()
         .get("dungeonNormal")
@@ -2042,6 +2246,28 @@ pub fn dungeon_normal_quality() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    /// bonuses.json lists several bonus ids for some (group, level) pairs. The
+    /// index is built by walking a HashMap, so without a rule the winner changes
+    /// between runs and the same rank resolves to a different bonus id.
+    #[test]
+    fn duplicate_group_levels_always_resolve_to_the_same_bonus_id() {
+        use std::collections::HashMap;
+        let mut one: HashMap<u64, Vec<(u64, u64)>> = HashMap::new();
+        one.insert(282, vec![(9277, 2), (9275, 2)]);
+        let mut other: HashMap<u64, Vec<(u64, u64)>> = HashMap::new();
+        other.insert(282, vec![(9275, 2), (9277, 2)]);
+
+        assert_eq!(
+            super::index_by_group_level(&one).get(&(282, 2)),
+            Some(&9275)
+        );
+        assert_eq!(
+            super::index_by_group_level(&one),
+            super::index_by_group_level(&other),
+            "the order the members arrive in must not change the index"
+        );
+    }
+
     use super::*;
     use crate::test_support::{ensure_game_data_loaded, TestItem};
     use serde_json::json;
@@ -2389,7 +2615,11 @@ mod tests {
         for e in embs {
             assert!(!e.name.is_empty(), "embellishment {} has no name", e.id);
             assert!(!e.bonus_ids.is_empty(), "{} has no bonus ids", e.name);
-            assert!(!e.item_ids.is_empty(), "{} applies to no crafted item", e.name);
+            assert!(
+                !e.item_ids.is_empty(),
+                "{} applies to no crafted item",
+                e.name
+            );
         }
         // Deterministic order for the API response.
         let names: Vec<&str> = embs.iter().map(|e| e.name.as_str()).collect();
@@ -2406,8 +2636,16 @@ mod tests {
         for e in crafted_embellishments() {
             for bid in &e.bonus_ids {
                 if let Some(b) = get_bonus(*bid) {
-                    assert!(b.get("socket").is_none(), "bonus {bid} of {} adds sockets", e.name);
-                    assert!(b.get("itemLevel").is_none(), "bonus {bid} of {} changes ilevel", e.name);
+                    assert!(
+                        b.get("socket").is_none(),
+                        "bonus {bid} of {} adds sockets",
+                        e.name
+                    );
+                    assert!(
+                        b.get("itemLevel").is_none(),
+                        "bonus {bid} of {} changes ilevel",
+                        e.name
+                    );
                 }
             }
         }
@@ -2455,7 +2693,11 @@ mod tests {
         for (name, tiers) in by_name {
             let first: Vec<u64> = bonus_ids_of(tiers[0]);
             for t in &tiers[1..] {
-                assert_eq!(bonus_ids_of(t), first, "tiers of {name} diverge in craftingBonusIds");
+                assert_eq!(
+                    bonus_ids_of(t),
+                    first,
+                    "tiers of {name} diverge in craftingBonusIds"
+                );
             }
         }
     }
@@ -2492,5 +2734,86 @@ mod tests {
             "malformed data file must surface an error, not load empty"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// "Upgrade up to" is a ceiling, not an assignment: it raises an item to the
+    /// named rank on its own track, clamps to that track's max, and never walks
+    /// a piece that is already higher back down.
+    #[test]
+    fn upgrade_to_rank_raises_clamps_and_never_downgrades() {
+        crate::test_support::ensure_game_data_loaded();
+        // Hero 3/6 (12843) -> rank 4 is Hero 4/6 (12844).
+        let at_three = "deathknight=t\nwaist=,id=1,bonus_id=12843\n";
+        assert!(upgrade_simc_input_to_rank(at_three, 4).contains("bonus_id=12844"));
+        // Rank past the end of the track clamps to Hero 6/6 rather than vanishing.
+        assert!(upgrade_simc_input_to_rank(at_three, 99).contains("bonus_id=12846"));
+        // Already at the top: a lower rank must leave it alone.
+        let at_max = "deathknight=t\nwaist=,id=1,bonus_id=12846\n";
+        assert!(upgrade_simc_input_to_rank(at_max, 4).contains("bonus_id=12846"));
+        // Rank 0 is the off switch.
+        assert_eq!(upgrade_simc_input_to_rank(at_three, 0), at_three);
+        // Non-upgrade bonuses ride along untouched.
+        let mixed = "deathknight=t\nneck=,id=1,bonus_id=13668/12843\n";
+        let out = upgrade_simc_input_to_rank(mixed, 6);
+        assert!(out.contains("13668"), "socket bonus must survive: {out}");
+        assert!(out.contains("12846"), "upgrade bonus must move: {out}");
+    }
+
+    /// Each track maxes on its own terms, so one rank spans them all.
+    #[test]
+    fn upgrade_to_rank_moves_each_track_on_its_own_ladder() {
+        crate::test_support::ensure_game_data_loaded();
+        // Champion 1/6 -> 6/6, Myth 1/6 -> 6/6.
+        let profile = "deathknight=t\nhead=,id=1,bonus_id=12833\nfinger1=,id=2,bonus_id=12849\n";
+        let out = upgrade_simc_input_to_rank(profile, 6);
+        assert!(
+            out.contains("bonus_id=12838"),
+            "Champion 6/6 expected: {out}"
+        );
+        assert!(out.contains("bonus_id=12854"), "Myth 6/6 expected: {out}");
+    }
+
+    /// A neck or ring can carry an intrinsic socket AND a socket-granting bonus
+    /// of its own; both are real, so they add. Getting this wrong under-gems the
+    /// item, and SimC applies exactly the gems we emit.
+    #[test]
+    fn intrinsic_and_inherent_sockets_add_up() {
+        crate::test_support::ensure_game_data_loaded();
+        // Every current item with sockets from both sources. Verified in game.
+        for item_id in [268265, 250247, 249920] {
+            assert_eq!(
+                item_socket_count(item_id, &[]),
+                2,
+                "item {item_id} drops with two sockets"
+            );
+        }
+        // A socket bonus listed both inherently and in the request counts once,
+        // because resolve_bonuses sums what it is handed.
+        assert_eq!(item_socket_count(268265, &[13668]), 2, "no double count");
+        // The common case is unchanged: a neck whose only socket comes from an
+        // inherent bonus still reports one, not two.
+        assert_eq!(item_socket_count(268250, &[]), 1, "one source, one socket");
+        // An item with neither source stays at zero. Necks and rings that reach
+        // this state get their socket from the per-slot floor the caller applies.
+        assert_eq!(item_socket_count(268222, &[]), 0);
+    }
+
+    #[test]
+    fn vault_socket_slots_come_from_season_config() {
+        crate::test_support::ensure_game_data_loaded();
+        // Head, neck, waist, wrist and rings carry a vault reward's extra socket.
+        for inv_type in [1, 2, 6, 9, 11] {
+            assert!(
+                takes_vault_socket(inv_type),
+                "inv_type {inv_type} should be eligible"
+            );
+        }
+        // Chest, legs, trinkets and weapons do not.
+        for inv_type in [5, 7, 12, 13, 17] {
+            assert!(
+                !takes_vault_socket(inv_type),
+                "inv_type {inv_type} should not be eligible"
+            );
+        }
     }
 }

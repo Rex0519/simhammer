@@ -266,6 +266,7 @@ pub(super) async fn create_top_gear_sim(
         repo.get_ref(),
         simc_bins.get_ref(),
         log_buffer.get_ref(),
+        false,
     )
     .await
 }

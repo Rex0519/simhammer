@@ -257,6 +257,24 @@ pub fn generate_droptimizer_input(
     droptimizer::generate_droptimizer_input(base_profile, drop_items, crafted_stats, embellishments)
 }
 
+pub use droptimizer::DropRunOptions;
+
+pub fn generate_droptimizer_input_with(
+    base_profile: &str,
+    drop_items: &[Value],
+    crafted_stats: Option<CraftedStats>,
+    embellishments: &HashMap<u64, CraftedEmbellishment>,
+    options: DropRunOptions,
+) -> (String, usize, HashMap<String, Value>) {
+    droptimizer::generate_droptimizer_input_with(
+        base_profile,
+        drop_items,
+        crafted_stats,
+        embellishments,
+        options,
+    )
+}
+
 pub fn generate_upgrade_compare_input(
     base_profile: &str,
     upgraded_options_by_slot: &HashMap<String, Vec<Value>>,

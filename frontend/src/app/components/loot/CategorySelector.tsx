@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useLanguage } from '../../lib/i18n';
 import type { DungeonCategory } from '../../lib/types';
+import { BONUS_ROLL_CATEGORY } from './lootConfiguration';
 
 interface CategoryTab {
   key: string;
@@ -15,6 +16,8 @@ const CATEGORY_ICONS: Record<string, string> = {
   delves: 'M8 1L1 6v4l7 5 7-5V6L8 1zM1 6l7 5 7-5',
   prey: 'M8 2L3 5v6l5 3 5-3V5L8 2zM8 8V2M8 8l5-3M8 8l-5-3',
   catalyst: 'M8 1a7 7 0 100 14A7 7 0 008 1zM5 8h6M8 5v6',
+  [BONUS_ROLL_CATEGORY]:
+    'M8 1a7 7 0 100 14A7 7 0 008 1zM5.5 5.5h.01M10.5 5.5h.01M5.5 10.5h.01M10.5 10.5h.01M8 8h.01',
   'rare-profession': 'M4 1l4 5 4-5M3 6h10l-1 5H4L3 6zM5 11v3h6v-3',
   'pvp-profession': 'M4 1l4 5 4-5M3 6h10l-1 5H4L3 6zM5 11v3h6v-3',
 };
@@ -31,23 +34,34 @@ interface CategorySelectorProps {
   category: string;
   onChange: (key: string) => void;
   dungeonCats: { cat: DungeonCategory; instances: unknown[] }[];
+  /** Bonus Rolls spans two pools, so it resolves to no single instance. Callers
+   *  that run one instance at a time (the roster) leave it off. */
+  includeBonusRoll?: boolean;
 }
 
 export default function CategorySelector({
   category,
   onChange,
   dungeonCats,
+  includeBonusRoll = false,
 }: CategorySelectorProps) {
   const { t } = useLanguage();
   const tabs = useMemo(() => {
     const result: CategoryTab[] = [
       { key: 'raids', label: t('loot.raids'), icon: CATEGORY_ICONS.raids },
     ];
+    if (includeBonusRoll) {
+      result.push({
+        key: BONUS_ROLL_CATEGORY,
+        label: t('loot.bonusRolls'),
+        icon: CATEGORY_ICONS[BONUS_ROLL_CATEGORY],
+      });
+    }
     for (const dc of dungeonCats) {
       result.push({ key: dc.cat.key, label: dc.cat.label, icon: getIcon(dc.cat.key) });
     }
     return result;
-  }, [dungeonCats, t]);
+  }, [dungeonCats, includeBonusRoll, t]);
 
   return (
     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">

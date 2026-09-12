@@ -151,11 +151,19 @@ pub fn get_instance_drops(
     };
 
     let drops_map = item_db::drops_by_encounter();
+    let raid_vault_tiers = item_db::raid_vault_difficulties();
     let armor_slot_types = class_data::ARMOR_INVENTORY_TYPES;
     let mut by_slot: HashMap<&str, Vec<Value>> = HashMap::new();
     let mut seen: std::collections::HashSet<u64> = std::collections::HashSet::new();
 
-    for eid in encounter_ids.keys() {
+    // Sorted, because one item can be obtainable from more than one boss (a tier
+    // piece from its own slot token, and again from the last boss's any-slot
+    // token) and only the first is kept. HashMap order would re-attribute it on
+    // every restart; this pins it to the same boss every time.
+    let mut ordered_encounters: Vec<i64> = encounter_ids.keys().copied().collect();
+    ordered_encounters.sort_unstable();
+
+    for eid in &ordered_encounters {
         if let Some(items_list) = drops_map.get(eid) {
             for item in items_list {
                 // For meta-instances, only include items sourced from this specific instance
@@ -168,6 +176,14 @@ pub fn get_instance_drops(
                         continue;
                     }
                 }
+
+                // A tier token cannot be worn: it grants one class's tier piece.
+                // Resolve it so the boss lists what it actually hands this
+                // character. Done after the pool filter, which reads the token's
+                // own source, and before everything below, which reads the item.
+                let token_target = item_db::tier_token_target(item, class_name);
+                let from_tier_token = token_target.is_some();
+                let item = token_target.unwrap_or(item);
 
                 let item_id = item.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
                 if !seen.insert(item_id) {
@@ -343,6 +359,44 @@ pub fn get_instance_drops(
                     }
                 }
 
+                // Bonus rolls pay the Great Vault item level for the difficulty
+                // rolled on, so every tier is a FLAT rank: it replaces the
+                // encounter's own upgrade level rather than stacking with it.
+                // Only encounters a roll can actually be spent on get these keys
+                // (raid trash cannot), and never fixed-ilvl raids, whose gear sits
+                // off the tracks the vault pays on.
+                if upgrade_lvl.is_some()
+                    && fixed_diff.is_none()
+                    && item_db::is_bonus_roll_raid_encounter(*eid)
+                {
+                    for vault in &raid_vault_tiers {
+                        // A Very Rare drop keeps its own item level under a bonus
+                        // roll, so the per-encounter override outranks the tier.
+                        // Copied verbatim — no "track" field, so the upgrade
+                        // slider stays a no-op and cannot walk it back down.
+                        if let Some(entry) = item_db::encounter_difficulty_override(*eid)
+                            .and_then(|v| v.get(&vault.base_difficulty))
+                        {
+                            diff_info.insert(vault.key.clone(), entry.clone());
+                            continue;
+                        }
+                        let Some(track) = vault.track.as_deref() else {
+                            continue;
+                        };
+                        if let Some(&(ilvl, bonus_id, quality)) =
+                            track_map.and_then(|t| t.get(&(track.to_string(), vault.level, tm)))
+                        {
+                            diff_info.insert(
+                                vault.key.clone(),
+                                serde_json::json!({
+                                    "ilvl": ilvl, "bonus_id": bonus_id, "quality": quality,
+                                    "track": track, "level": vault.level, "max_level": tm,
+                                }),
+                            );
+                        }
+                    }
+                }
+
                 // Compute per-difficulty info for dungeons/M+
                 let mut dungeon_info = serde_json::Map::new();
                 if upgrade_lvl.is_none() && fixed_diff.is_none() {
@@ -415,6 +469,11 @@ pub fn get_instance_drops(
                 });
                 if !item_specs.is_empty() {
                     item_json["specs"] = serde_json::json!(item_specs);
+                }
+                // A token drop hands over the tier piece with its own secondaries,
+                // unlike a catalyst conversion — the UI has to tell them apart.
+                if from_tier_token {
+                    item_json["from_tier_token"] = serde_json::json!(true);
                 }
 
                 // Check for embellishment (item_limit_category 512)
@@ -594,6 +653,12 @@ fn build_catalyst_variant(item: &Value, class_id: u64, inv_type: u64) -> Option<
     if item_db::is_crafted_item(source_item_id) {
         return None;
     }
+    // The conversion inherits the source's secondaries, so a set bonus is the
+    // only thing it can add. Slots whose tier result carries no set id convert
+    // into a strictly identical item — nothing to sim.
+    if !tier.has_set {
+        return None;
+    }
 
     let mut variant = item.clone();
     let obj = variant.as_object_mut()?;
@@ -605,6 +670,9 @@ fn build_catalyst_variant(item: &Value, class_id: u64, inv_type: u64) -> Option<
         "source_item_id".to_string(),
         serde_json::json!(source_item_id),
     );
+    if let Some(name) = item.get("name").and_then(|n| n.as_str()) {
+        obj.insert("source_name".to_string(), Value::String(name.to_string()));
+    }
     // The tier piece is not embellished even if the source drop was; drop the
     // stale flag so it doesn't show the badge or count against the 2/2 limit.
     obj.remove("embellished");
@@ -613,14 +681,21 @@ fn build_catalyst_variant(item: &Value, class_id: u64, inv_type: u64) -> Option<
         "accepts_preferred_stats".to_string(),
         Value::Bool(item_db::accepts_preferred_stats(source_item_id)),
     );
-    let tier_effects = item_db::item_effect_bonus_ids(tier.item_id);
-    if tier_effects.is_empty() {
+    // The conversion re-bases the stats, but a granted effect rides along: the
+    // game keeps the source's, as an exported catalysed piece shows (tier legs
+    // redirected from Chausses of Unbound Rancor still carry Venomcursed
+    // Critical Strike). So the source's effects survive, and the tier piece's
+    // own are merged on top rather than replacing them.
+    let mut effects = item_db::item_effect_bonus_ids(source_item_id);
+    for id in item_db::item_effect_bonus_ids(tier.item_id) {
+        if !effects.contains(&id) {
+            effects.push(id);
+        }
+    }
+    if effects.is_empty() {
         obj.remove("effect_bonus_ids");
     } else {
-        obj.insert(
-            "effect_bonus_ids".to_string(),
-            serde_json::json!(tier_effects),
-        );
+        obj.insert("effect_bonus_ids".to_string(), serde_json::json!(effects));
     }
     if tier.has_set {
         obj.insert(
@@ -1024,6 +1099,76 @@ mod variant_tests {
     }
 
     #[test]
+    fn catalyst_only_converts_into_a_set_piece() {
+        ensure_game_data_loaded();
+        let class_id = class_data::class_wow_id("death_knight").unwrap();
+        let drop = |item_id: u64, inv: u64| {
+            json!({
+                "item_id": item_id, "name": "x", "icon": "x",
+                "quality": 4, "ilevel": 334, "inventory_type": inv,
+            })
+        };
+        // Head is a set slot: the conversion buys a set bonus, so it is worth simming.
+        assert!(build_catalyst_variant(&drop(268229, 1), class_id, 1).is_some());
+        // Waist converts too, but into a piece with no set id. Secondaries are
+        // inherited either way, so the result is a strictly identical item.
+        assert!(build_catalyst_variant(&drop(268244, 6), class_id, 6).is_none());
+
+        // The set covers exactly head, shoulder, chest, legs and hands.
+        for inv in [1, 3, 5, 7, 10] {
+            assert!(
+                item_db::catalyst_tier_item(class_id, inv).is_some_and(|t| t.has_set),
+                "inv {inv} should convert into a set piece"
+            );
+        }
+        for inv in [6, 8, 9, 16] {
+            assert!(
+                item_db::catalyst_tier_item(class_id, inv).is_some_and(|t| !t.has_set),
+                "inv {inv} converts, but adds nothing"
+            );
+        }
+    }
+
+    #[test]
+    fn catalyst_variant_keeps_the_source_items_granted_effect() {
+        ensure_game_data_loaded();
+        // Chausses of Unbound Rancor grants Venomcursed Critical Strike (13708).
+        // The character's own export proves the game keeps it through the
+        // conversion: tier legs 271473, redirected_base_stats=271878, still
+        // carrying 13708. Only the stats are re-based; the effect rides along.
+        let source_effects = item_db::item_effect_bonus_ids(271878);
+        assert!(
+            source_effects.contains(&13708),
+            "fixture drifted: the source no longer grants the effect"
+        );
+        assert!(
+            !item_db::item_effect_bonus_ids(271473).contains(&13708),
+            "fixture drifted: the tier piece grants it on its own"
+        );
+
+        let class_id = class_data::class_wow_id("death_knight").unwrap();
+        let item = json!({
+            "item_id": 271878,
+            "name": "Chausses of Unbound Rancor",
+            "icon": "inv_legs",
+            "quality": 4,
+            "ilevel": 334,
+            "inventory_type": 7,
+            "effect_bonus_ids": source_effects,
+        });
+        let variant = build_catalyst_variant(&item, class_id, 7).expect("legs tier piece exists");
+        let effects: Vec<u64> = variant
+            .get("effect_bonus_ids")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|v| v.as_u64()).collect())
+            .unwrap_or_default();
+        assert!(
+            effects.contains(&13708),
+            "the catalysed piece must keep the source's effect, got {effects:?}"
+        );
+    }
+
+    #[test]
     fn build_catalyst_variant_converts_to_tier_piece() {
         ensure_game_data_loaded();
         let class_id = class_data::class_wow_id("mage").unwrap();
@@ -1044,6 +1189,7 @@ mod variant_tests {
         });
         let cat = build_catalyst_variant(&item, class_id, inv_type).expect("should convert");
         assert_eq!(cat["is_catalyst"], json!(true));
+        assert_eq!(cat["source_name"], json!("Random Chest"));
         assert_eq!(cat["item_id"].as_u64().unwrap(), tier.item_id);
         assert_eq!(cat["source_item_id"], json!(999999));
         assert_eq!(cat["name"], json!(tier.name));
@@ -1158,6 +1304,299 @@ mod variant_tests {
             sources,
             vec![900001, 900002, 900003],
             "each eligible source needs its own catalyst row"
+        );
+    }
+}
+
+#[cfg(test)]
+mod bonus_roll_tests {
+    use super::*;
+    use crate::test_support::ensure_game_data_loaded;
+    use serde_json::json;
+    use std::collections::BTreeSet;
+
+    /// Every drop the raid endpoint serves, paired with its encounter id.
+    fn season_raid_items() -> Vec<(i64, Value)> {
+        let drops = get_drops_by_type("raid", None, None).expect("season raids have drops");
+        drops
+            .values()
+            .filter_map(|items| items.as_array())
+            .flatten()
+            .map(|item| {
+                let eid = item
+                    .get("encounter_id")
+                    .and_then(|v| v.as_i64())
+                    .expect("drops carry encounter_id");
+                (eid, item.clone())
+            })
+            .collect()
+    }
+
+    fn vault_entry<'a>(item: &'a Value, tier: &str) -> Option<&'a Value> {
+        item.get("difficulty_info")?.get(tier)
+    }
+
+    /// Whether a bonus roll on this encounter pays a ladder rank. Fixed-ilvl
+    /// raids sit off the tracks the vault pays on, so they are excluded even
+    /// when the extract lists them as rollable.
+    fn pays_a_vault_rank(encounter_id: i64) -> bool {
+        item_db::is_bonus_roll_raid_encounter(encounter_id)
+            && item_db::encounter_fixed_difficulty(encounter_id).is_none()
+    }
+
+    #[test]
+    fn exactly_the_bonus_rollable_bosses_carry_a_flat_tier() {
+        ensure_game_data_loaded();
+        // Bosses drop at different upgrade levels within a difficulty, but a
+        // bonus roll pays one Great Vault item level for the whole tier.
+        let mut rollable = 0;
+        for (eid, item) in season_raid_items() {
+            let entry = vault_entry(&item, "vault-heroic");
+            if !pays_a_vault_rank(eid) {
+                assert!(
+                    entry.is_none(),
+                    "encounter {eid} cannot be rolled on, so it must carry no tier"
+                );
+                continue;
+            }
+            rollable += 1;
+            let entry =
+                entry.unwrap_or_else(|| panic!("bonus-rollable encounter {eid} lost its tier"));
+            assert_eq!(entry["ilvl"], serde_json::json!(318), "encounter {eid}");
+            assert_eq!(
+                entry["bonus_id"],
+                serde_json::json!(12849),
+                "encounter {eid}"
+            );
+            assert_eq!(entry["track"], serde_json::json!("Myth"), "encounter {eid}");
+            assert_eq!(entry["level"], serde_json::json!(1), "encounter {eid}");
+        }
+        assert!(rollable > 0, "no raid item was bonus-rollable");
+    }
+
+    #[test]
+    fn every_raid_vault_tier_matches_its_configured_rank() {
+        ensure_game_data_loaded();
+        // Pins the whole ladder: Champion 1/6, Hero 1/6, Myth 1/6, Myth 6/6.
+        let expected = [
+            ("vault-lfr", 292, 12833),
+            ("vault-normal", 305, 12841),
+            ("vault-heroic", 318, 12849),
+            ("vault-mythic", 334, 12854),
+        ];
+        let items = season_raid_items();
+        for (tier, ilvl, bonus_id) in expected {
+            let mut checked = 0;
+            for (eid, item) in &items {
+                if !pays_a_vault_rank(*eid) {
+                    continue;
+                }
+                // The Very Rare bosses leave the ladder on Mythic; covered below.
+                if tier == "vault-mythic" && item_db::encounter_difficulty_override(*eid).is_some()
+                {
+                    continue;
+                }
+                checked += 1;
+                let entry = vault_entry(item, tier)
+                    .unwrap_or_else(|| panic!("encounter {eid} is missing tier {tier}"));
+                assert_eq!(entry["ilvl"], serde_json::json!(ilvl), "{tier} on {eid}");
+                assert_eq!(
+                    entry["bonus_id"],
+                    serde_json::json!(bonus_id),
+                    "{tier} on {eid}"
+                );
+            }
+            assert!(checked > 0, "no raid item carried tier {tier}");
+        }
+    }
+
+    #[test]
+    fn configured_mythic_overrides_survive_the_mythic_vault_tier() {
+        ensure_game_data_loaded();
+        let items = season_raid_items();
+        let in_pool: BTreeSet<i64> = items.iter().map(|(eid, _)| *eid).collect();
+        // Covers every override the season declares for a boss in this pool, so
+        // losing one is a failure rather than a gap another boss papers over. An
+        // exception missing from the config cannot be detected here — that is
+        // the data pipeline's job.
+        let expected: BTreeSet<i64> = item_db::season_cfg()
+            .get("encounterDifficultyOverride")
+            .and_then(|v| v.as_object())
+            .map(|map| {
+                map.iter()
+                    .filter(|(_, value)| value.get("mythic").is_some())
+                    .filter_map(|(key, _)| key.parse::<i64>().ok())
+                    .filter(|eid| in_pool.contains(eid) && pays_a_vault_rank(*eid))
+                    .collect()
+            })
+            .unwrap_or_default();
+        assert!(
+            !expected.is_empty(),
+            "this season declares no Mythic overrides inside the raid pool"
+        );
+
+        let mut verified = BTreeSet::new();
+        for (eid, item) in &items {
+            let Some(over) =
+                item_db::encounter_difficulty_override(*eid).and_then(|v| v.get("mythic"))
+            else {
+                continue;
+            };
+            let entry = vault_entry(item, "vault-mythic")
+                .unwrap_or_else(|| panic!("encounter {eid} lost its vault-mythic entry"));
+            assert_eq!(entry, over, "encounter {eid} must keep its override ilvl");
+            assert!(
+                entry.get("track").is_none(),
+                "the override stays off-track so the upgrade slider cannot walk it down"
+            );
+            verified.insert(*eid);
+        }
+        assert_eq!(
+            verified, expected,
+            "every overridden boss in the pool must be covered"
+        );
+    }
+
+    /// Tier comes from a token that nobody can equip. The loot table has to show
+    /// the piece the token actually hands this character, or the five set slots
+    /// are simply missing from the raid.
+    #[test]
+    fn tier_tokens_are_listed_as_the_piece_they_grant() {
+        ensure_game_data_loaded();
+        let drops =
+            get_drops_by_type("raid", Some("death_knight"), None).expect("season raids have drops");
+        let items: Vec<&Value> = drops
+            .values()
+            .filter_map(|v| v.as_array())
+            .flatten()
+            .collect();
+
+        // The whole Baleful Grave-Knight set, each credited to a boss that can
+        // actually grant it. Several are reachable from two bosses — their own
+        // slot token and the last boss's any-slot Curio — and only one row
+        // survives the per-item dedupe, so assert membership rather than one boss.
+        for (item_id, granted_by) in [
+            (271474u64, &[2887i64, 2895][..]),
+            (271472, &[2894, 2895][..]),
+            (271477, &[2882, 2895][..]),
+            (271473, &[2871, 2895][..]),
+            (271475, &[2874, 2895][..]),
+        ] {
+            let row = items
+                .iter()
+                .find(|i| i.get("item_id").and_then(|v| v.as_u64()) == Some(item_id))
+                .unwrap_or_else(|| panic!("tier piece {item_id} is missing from the raid"));
+            let encounter = row
+                .get("encounter_id")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            assert!(
+                granted_by.contains(&encounter),
+                "tier piece {item_id} credited to {encounter}, which cannot grant it"
+            );
+            assert!(
+                row.get("is_catalyst").is_none(),
+                "{item_id} drops directly here, it is not a catalyst row"
+            );
+        }
+
+        // And the unwearable tokens themselves never reach the table.
+        for token_id in [270914u64, 270915, 270916, 270917] {
+            assert!(
+                !items
+                    .iter()
+                    .any(|i| i.get("item_id").and_then(|v| v.as_u64()) == Some(token_id)),
+                "token {token_id} should have resolved to a tier piece"
+            );
+        }
+    }
+
+    /// Token-derived drops carry their own secondaries; catalyst conversions do
+    /// not. The flag is what lets the UI say which of two same-named rows is which.
+    #[test]
+    fn only_token_derived_drops_are_flagged() {
+        ensure_game_data_loaded();
+        let drops = get_instance_drops(1320, Some("death_knight"), Some("Unholy"), false)
+            .expect("Venomous Abyss drops");
+        let heads = drops["Head"].as_array().expect("head slot");
+        let flagged: Vec<u64> = heads
+            .iter()
+            .filter(|i| i.get("from_tier_token").and_then(|v| v.as_bool()) == Some(true))
+            .filter_map(|i| i.get("item_id").and_then(|v| v.as_u64()))
+            .collect();
+        // 271474 is only reachable through Venomforged Effigy, so it is the one
+        // head the flag belongs on; Skullguard drops as itself and must not carry it.
+        assert!(
+            flagged.contains(&271474),
+            "token-granted tier head should be flagged, got {flagged:?}"
+        );
+        assert!(
+            !flagged.contains(&268229),
+            "a plain drop must not be flagged as a token grant"
+        );
+    }
+
+    /// A token serves several classes and grants each a different piece.
+    #[test]
+    fn a_tier_token_grants_each_class_its_own_piece() {
+        ensure_game_data_loaded();
+        let token = json!({ "id": 270917 });
+        let for_class = |class: &str| {
+            item_db::tier_token_target(&token, Some(class))
+                .and_then(|v| v.get("id"))
+                .and_then(|v| v.as_u64())
+        };
+        // Venomforged Effigy serves warrior, paladin and death knight.
+        assert_eq!(for_class("death_knight"), Some(271474));
+        assert_eq!(for_class("warrior"), Some(271456));
+        assert_eq!(for_class("paladin"), Some(271465));
+        // A class the token does not serve, and an unknown character, get nothing.
+        assert_eq!(for_class("mage"), None);
+        assert_eq!(item_db::tier_token_target(&token, None), None);
+        // An ordinary drop is not a token.
+        assert_eq!(
+            item_db::tier_token_target(&json!({ "id": 268250 }), Some("death_knight")),
+            None
+        );
+    }
+
+    #[test]
+    fn raid_trash_gets_no_vault_tiers() {
+        ensure_game_data_loaded();
+        // Trash has no bonus roll, so it must not appear in a Bonus Rolls pool.
+        let trash: Vec<_> = season_raid_items()
+            .into_iter()
+            .filter(|(eid, _)| *eid < 0)
+            .collect();
+        assert!(!trash.is_empty(), "expected a synthetic trash encounter");
+        for (eid, item) in trash {
+            assert!(
+                !item_db::is_bonus_roll_raid_encounter(eid),
+                "encounter {eid} should not be bonus-rollable"
+            );
+            for tier in ["vault-lfr", "vault-normal", "vault-heroic", "vault-mythic"] {
+                assert!(
+                    vault_entry(&item, tier).is_none(),
+                    "trash encounter {eid} must not carry {tier}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn lair_raid_is_in_the_pool_and_previous_tiers_are_not() {
+        ensure_game_data_loaded();
+        let encounters: BTreeSet<i64> = season_raid_items()
+            .into_iter()
+            .map(|(eid, _)| eid)
+            .collect();
+        assert!(
+            encounters.contains(&2849),
+            "Nymrissa Wavecaller (lair raid) belongs to this tier"
+        );
+        assert!(
+            !encounters.contains(&2711),
+            "Sporefall is a previous tier and must not reach the raid pool"
         );
     }
 }

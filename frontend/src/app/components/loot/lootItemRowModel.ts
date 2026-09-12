@@ -21,7 +21,14 @@ export interface LootItemRowModel {
   selected: boolean;
   offSpec: boolean;
   embellished: boolean;
-  variants: { is_void_forge?: boolean; is_catalyst?: boolean };
+  variants: {
+    is_void_forge?: boolean;
+    is_catalyst?: boolean;
+    owned?: boolean;
+    from_tier_token?: boolean;
+  };
+  /** Catalyst rows only: the converted item, whose secondaries the result keeps. */
+  catalystSource?: string;
   embellishment?: { value: number | null; options: CraftedEmbellishment[] };
 }
 
@@ -33,6 +40,8 @@ export interface LootItemRowContext {
   selected: Set<string>;
   embellishmentOptions?: CraftedEmbellishment[];
   embellishmentPicks?: Record<number, number>;
+  /** Already worn on a track this drop cannot beat — shown, but not simmed. */
+  owned?: boolean;
 }
 
 export function buildLootItemRow(
@@ -69,7 +78,16 @@ export function buildLootItemRow(
     selected,
     offSpec: item.off_spec === true,
     embellished: item.embellished === true || pick !== undefined,
-    variants: { is_void_forge: item.is_void_forge, is_catalyst: item.is_catalyst },
+    variants: {
+      is_void_forge: item.is_void_forge,
+      is_catalyst: item.is_catalyst,
+      owned: context.owned,
+      from_tier_token: item.from_tier_token,
+    },
+    catalystSource:
+      item.is_catalyst && item.source_item_id && item.source_name
+        ? localizedItemName(item.source_item_id, item.source_name, context.locale)
+        : undefined,
     embellishment: options?.length ? { value: pick ?? null, options } : undefined,
   };
 }

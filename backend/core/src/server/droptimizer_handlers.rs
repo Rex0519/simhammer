@@ -25,11 +25,15 @@ pub(super) async fn create_droptimizer_sim(
     log_buffer: web::Data<Arc<LogBuffer>>,
     registry: web::Data<Arc<ProviderRegistry>>,
 ) -> HttpResponse {
-    let simc_input = preprocess_simc_input(
-        &req.simc_input,
-        &req.options.talents,
-        &req.options.spec_override,
-    );
+    // Upgrading runs BEFORE generation, so it lands on the equipped profile
+    // alone: every candidate is added afterwards at the rank the browser priced
+    // it at. Reversing the order would silently lift each drop to its track max.
+    let raw_input = match req.upgrade_equipped_to {
+        Some(rank) => crate::item_db::upgrade_simc_input_to_rank(&req.simc_input, rank),
+        None => req.simc_input.clone(),
+    };
+    let simc_input =
+        preprocess_simc_input(&raw_input, &req.options.talents, &req.options.spec_override);
     let parse_result = addon_parser::parse_simc_input(&simc_input);
     let base_profile = parse_result.base_profile.clone();
 
@@ -80,11 +84,15 @@ pub(super) async fn create_droptimizer_sim(
     }
 
     let (generated_input, combo_count, combo_metadata) =
-        profileset_generator::generate_droptimizer_input(
+        profileset_generator::generate_droptimizer_input_with(
             &base_profile,
             &req.drop_items,
             crafted_stats,
             &embellishments,
+            profileset_generator::DropRunOptions {
+                preferred_gem_id: req.preferred_gem_id,
+                add_vault_socket: req.add_vault_socket,
+            },
         );
 
     if combo_count == 0 {
@@ -140,6 +148,7 @@ pub(super) async fn create_droptimizer_sim(
         repo.get_ref(),
         simc_bins.get_ref(),
         log_buffer.get_ref(),
+        req.force_single_pass,
     )
     .await
 }
