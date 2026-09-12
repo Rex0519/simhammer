@@ -2,6 +2,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { useSimContext } from '../sim-config/SimContext';
 import Checkbox from '../ui/Checkbox';
+import InfoIcon from '../ui/InfoIcon';
 import { useLanguage } from '../../lib/i18n';
 import { VOID_FORGE_ENABLED } from '../../lib/featureFlags';
 import { useLootCatalog } from './useLootCatalog';
@@ -286,10 +287,11 @@ function LootBrowserSession({
               />
               {t('dropFinder.addVaultSocket')}
             </label>
-            <label
-              className="group flex cursor-pointer items-center gap-2 text-sm text-on-surface-variant"
-              title={t('dropFinder.fullPrecisionTooltip')}
-            >
+            {/* The badge rather than a bare `title`: this toggle decides whether
+                the rows you compare carry real numbers or a coarse estimate, and
+                a native tooltip gives no hint that there is anything to read.
+                InfoIcon swallows its own clicks, so it can't toggle the box. */}
+            <label className="group flex cursor-pointer items-center gap-2 text-sm text-on-surface-variant">
               <Checkbox
                 variant="primary"
                 size="sm"
@@ -298,6 +300,7 @@ function LootBrowserSession({
                 aria-label={t('dropFinder.fullPrecision')}
               />
               {t('dropFinder.fullPrecision')}
+              <InfoIcon tooltip={t('dropFinder.fullPrecisionTooltip')} />
             </label>
             {VOID_FORGE_ENABLED && (
               <label className="group flex cursor-pointer items-center gap-2 text-sm text-on-surface-variant">
