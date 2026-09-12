@@ -621,7 +621,8 @@
   "page.crestUpgradesSubtitle": "Compare upgrade paths for your equipped gear using crests. Find the most impactful upgrades for your budget.",
   "upgradeCompare.selectUpgradeable": "Select at least one upgradeable item.",
   "layout.simsRunning": "{count} running",
-  "layout.simsRunningTitle": "{count} sim{s} running — click to view",
+  "layout.simsRunningTitle": "{count} sims running — click to view",
+  "layout.simsRunningTitleOne": "1 sim running — click to view",
   "layout.clipboardImported": "Imported SimC data for {charName}",
   "layout.downloadingSimc": "Downloading SimC engine... {percent}%",
   "layout.downloadSimcFailed": "Failed to download SimC: {error}",
@@ -674,7 +675,8 @@
   "loot.alreadyOwnedReason": "You already have this item on the same upgrade track or better, so a drop of it could not improve on what you wear.",
   "topGear.sectionFolio": "Omnium Folio",
   "omnium.row": "Row {number}",
-  "omnium.combinations": "{count} combination{s}",
+  "omnium.combinations": "{count} combinations",
+  "omnium.combinationsOne": "1 combination",
   "omnium.multiSelectHint": "Pick more than one rune in a row to sim them all.",
   "omnium.sectionTooltip": "Your equipped folio is selected. Pick extra runes in a row to sim every combination of them alongside your gear."
 }

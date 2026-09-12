@@ -51,7 +51,9 @@ export default function OmniumFolioPicker({
   return (
     <div className="space-y-2">
       <p className="text-[13px] text-on-surface-variant">
-        {t('omnium.combinations', { count: combos, s: combos === 1 ? '' : 's' })}
+        {/* Two keys rather than an English-only "{s}" suffix: German pluralises
+            "Kombination" as "Kombinationen", so no trailing letter works. */}
+        {t(combos === 1 ? 'omnium.combinationsOne' : 'omnium.combinations', { count: combos })}
         {mode === 'multi' && <span className="ml-2 text-muted">{t('omnium.multiSelectHint')}</span>}
       </p>
 

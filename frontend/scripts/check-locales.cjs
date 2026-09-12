@@ -7,11 +7,13 @@
  * missing key renders the English string rather than breaking. Coverage is
  * therefore reported, not enforced.
  *
- * Two things ARE errors, because both mean a file is wrong rather than behind:
+ * Three things ARE errors, because each means a file is wrong rather than behind:
  *   - a key referenced in code but absent from en_US (nothing to fall back to,
  *     so the raw key reaches the screen)
  *   - a key a locale still carries after en_US dropped it (dead weight that
  *     hides real drift)
+ *   - a translation whose {placeholders} don't match en_US: a dropped {count}
+ *     silently loses the number, and an invented one renders literally
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -87,8 +89,29 @@ console.log(
     `(+${dynamic} dynamic call sites, not checkable)`
 );
 
+// ── placeholder agreement ───────────────────────────────────────────────────
+const placeholders = (s) => new Set([...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]));
+const sameSet = (a, b) => a.size === b.size && [...a].every((v) => b.has(v));
+const mismatched = [];
+for (const [name, data] of Object.entries(locales)) {
+  if (name === 'en_US') continue;
+  for (const k of Object.keys(data)) {
+    if (!(k in base)) continue;
+    const want = placeholders(base[k]);
+    const got = placeholders(data[k]);
+    if (!sameSet(want, got)) {
+      mismatched.push(`${name} ${k}: {${[...got].join('} {')}} vs en_US {${[...want].join('} {')}}`);
+    }
+  }
+}
+
 // ── errors ──────────────────────────────────────────────────────────────────
 let failed = false;
+if (mismatched.length) {
+  failed = true;
+  console.log(`\nERROR: placeholders disagree with en_US (${mismatched.length}):`);
+  for (const m of mismatched) console.log(`  ${m}`);
+}
 if (undefinedKeys.length) {
   failed = true;
   console.log(`\nERROR: referenced in code but missing from en_US (${undefinedKeys.length}):`);
