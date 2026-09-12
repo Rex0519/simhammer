@@ -78,12 +78,15 @@ pub(super) fn emit_base_actor(
 /// `slot_simc`: caller-built slot → final simc (enchant/gem overrides already
 /// applied). `talent_spec_name`: spec derived from `talent_string`; a `spec=`
 /// line is emitted only when `Some(s)` and `s != base_actor_spec`.
+/// `omnium_string`: folio override, emitted only when non-empty (the base actor
+/// already carries the exported folio).
 pub(super) fn emit_profileset(
     name: &str,
     slot_simc: &HashMap<String, String>,
     talent_string: &str,
     talent_spec_name: Option<&str>,
     base_actor_spec: &str,
+    omnium_string: &str,
 ) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     lines.push(format!("### {}", name));
@@ -104,6 +107,12 @@ pub(super) fn emit_profileset(
                 lines.push(format!("profileset.\"{}\"+=spec={}", name, spec_name));
             }
         }
+    }
+    if !omnium_string.is_empty() {
+        lines.push(format!(
+            "profileset.\"{}\"+=omnium_talents={}",
+            name, omnium_string
+        ));
     }
     lines.push(String::new());
     lines
@@ -136,13 +145,16 @@ pub(super) fn build_gem_entry(slot: &str, gem_id: u64) -> Value {
 /// `gear_items`: `(slot, is_kept, item)` gear rows (paired-display + non-equipped
 /// alts). `enchant_entries`/`gem_entries`: pre-built delta rows (`&[]` if none).
 /// `talent_info`: `Some((build_name, talent_spec))` to tag talent variants.
+/// `folio_name`: `Some(name)` to tag folio variants.
 /// `include_off_hand_synthetic`: append an empty `off_hand` entry when the gear
 /// set lacks one (two-hand main_hand case).
+#[allow(clippy::too_many_arguments)]
 pub(super) fn build_combo_metadata(
     gear_items: &[(String, bool, &Value)], // (slot, is_kept, item_value)
     enchant_entries: &[Value],
     gem_entries: &[Value],
     talent_info: Option<(&str, Option<&str>)>, // (build_name, talent_spec_str)
+    folio_name: Option<&str>,
     include_off_hand_synthetic: bool,
 ) -> Vec<Value> {
     let mut combo_items: Vec<Value> = Vec::new();
@@ -167,6 +179,16 @@ pub(super) fn build_combo_metadata(
             for item in &mut combo_items {
                 item["talent_build"] = json!(build_name);
                 item["talent_spec"] = json!(talent_spec);
+            }
+        }
+    }
+
+    if let Some(folio) = folio_name {
+        if combo_items.is_empty() {
+            combo_items.push(json!({ "folio_build": folio, "is_kept": true }));
+        } else {
+            for item in &mut combo_items {
+                item["folio_build"] = json!(folio);
             }
         }
     }

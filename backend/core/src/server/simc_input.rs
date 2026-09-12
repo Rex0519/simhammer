@@ -16,6 +16,8 @@ static RE_TALENTS_LINE: Lazy<regex::Regex> =
     Lazy::new(|| regex::Regex::new(r"(?m)^talents=.+$").unwrap());
 static RE_SPEC_LINE: Lazy<regex::Regex> =
     Lazy::new(|| regex::Regex::new(r"(?m)^spec=.+$").unwrap());
+static RE_OMNIUM_LINE: Lazy<regex::Regex> =
+    Lazy::new(|| regex::Regex::new(r"(?m)^omnium_talents=.+$").unwrap());
 
 /// Sanitize user-provided custom SimC input by stripping dangerous directives.
 pub(super) fn sanitize_custom_simc(input: &str) -> String {
@@ -251,6 +253,22 @@ pub(super) fn apply_talent_override(simc_input: &str, talents: &str) -> String {
     }
 }
 
+/// Replace the omnium_talents= line in a simc input string with a new folio
+/// value (`<entryId>:<rank>` pairs, slash-separated), appending when the
+/// profile has none.
+pub(super) fn apply_omnium_override(simc_input: &str, omnium: &str) -> String {
+    if omnium.is_empty() {
+        return simc_input.to_string();
+    }
+    if RE_OMNIUM_LINE.is_match(simc_input) {
+        RE_OMNIUM_LINE
+            .replace(simc_input, format!("omnium_talents={}", omnium))
+            .to_string()
+    } else {
+        format!("{}\nomnium_talents={}", simc_input, omnium)
+    }
+}
+
 /// Replace the spec= line in a simc input string.
 pub(super) fn apply_spec_override(simc_input: &str, spec: &str) -> String {
     if spec.is_empty() {
@@ -262,6 +280,46 @@ pub(super) fn apply_spec_override(simc_input: &str, spec: &str) -> String {
             .to_string()
     } else {
         format!("{}\nspec={}", simc_input, spec)
+    }
+}
+
+#[cfg(test)]
+mod omnium_tests {
+    use super::*;
+
+    #[test]
+    fn replaces_an_existing_omnium_line() {
+        let input = "hunter=\"Test\"\nomnium_talents=136814:1/136818:1\nhead=,id=100\n";
+        assert_eq!(
+            apply_omnium_override(input, "136824:1/136815:1"),
+            "hunter=\"Test\"\nomnium_talents=136824:1/136815:1\nhead=,id=100\n"
+        );
+    }
+
+    #[test]
+    fn appends_when_the_profile_has_no_omnium_line() {
+        let input = "hunter=\"Test\"\nhead=,id=100";
+        assert_eq!(
+            apply_omnium_override(input, "136814:1"),
+            "hunter=\"Test\"\nhead=,id=100\nomnium_talents=136814:1"
+        );
+    }
+
+    #[test]
+    fn empty_override_leaves_the_profile_alone() {
+        let input = "hunter=\"Test\"\nomnium_talents=136814:1\n";
+        assert_eq!(apply_omnium_override(input, ""), input);
+    }
+
+    #[test]
+    fn does_not_touch_the_talents_line() {
+        // `talents=` and `omnium_talents=` both end in "talents=" — a loose
+        // regex would rewrite the wrong one.
+        let input = "hunter=\"Test\"\ntalents=C0PAD57\nomnium_talents=136814:1\n";
+        assert_eq!(
+            apply_omnium_override(input, "136826:1"),
+            "hunter=\"Test\"\ntalents=C0PAD57\nomnium_talents=136826:1\n"
+        );
     }
 }
 
@@ -289,7 +347,7 @@ mod catalyst_tests {
             "neck".to_string(),
             vec![resolved.slots["neck"].alternatives[0].uid.clone()],
         );
-        let (_, count, _) = crate::profileset_generator::generate_top_gear_input_with_talents(
+        let (_, count, _) = crate::profileset_generator::generate_top_gear_input_with_variants(
             &resolved.base_profile,
             &items_by_slot,
             &selected,

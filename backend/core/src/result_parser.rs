@@ -488,6 +488,11 @@ pub fn parse_gear_comparison_result(
             .and_then(|it| it.get("talent_spec"))
             .and_then(|v| v.as_str())
             .unwrap_or("");
+        let folio_build = items
+            .first()
+            .and_then(|it| it.get("folio_build"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
 
         // 95% CI half-width as a percent of the mean. simc reports the
         // standard error of the mean in `mean_std_dev`; the half-width is
@@ -510,6 +515,9 @@ pub fn parse_gear_comparison_result(
         }
         if !talent_spec.is_empty() {
             entry["talent_spec"] = json!(talent_spec);
+        }
+        if !folio_build.is_empty() {
+            entry["folio_build"] = json!(folio_build);
         }
         results.push(entry);
     }
@@ -534,6 +542,12 @@ pub fn parse_gear_comparison_result(
     let baseline_talent_spec = baseline_items
         .first()
         .and_then(|it| it.get("talent_spec"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let baseline_folio = baseline_items
+        .first()
+        .and_then(|it| it.get("folio_build"))
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
@@ -566,6 +580,9 @@ pub fn parse_gear_comparison_result(
     }
     if !baseline_talent_spec.is_empty() {
         baseline_entry["talent_spec"] = json!(baseline_talent_spec);
+    }
+    if !baseline_folio.is_empty() {
+        baseline_entry["folio_build"] = json!(baseline_folio);
     }
     results.push(baseline_entry);
 
@@ -714,6 +731,41 @@ mod tests {
         assert_eq!(
             find_row(&parsed, "Combo 1")["precision_pct"].as_f64(),
             Some(0.70)
+        );
+    }
+
+    /// A folio combination is tagged on the combo's metadata, and the row has to
+    /// carry it through or the results can't say which runes won.
+    #[test]
+    fn folio_build_reaches_the_result_row() {
+        let raw = json!({
+            "sim": {
+                "players": [{
+                    "name": "Base",
+                    "collected_data": { "dps": { "mean": 1000.0, "mean_std_dev": 2.0 } }
+                }],
+                "profilesets": { "results": [
+                    { "name": "Combo 2", "mean": 1100.0, "mean_error": 2.8 }
+                ] }
+            }
+        });
+        let mut meta = HashMap::new();
+        meta.insert(
+            "Combo 2".to_string(),
+            vec![json!({ "slot": "head", "item_id": 100, "folio_build": "Echoes" })],
+        );
+        meta.insert(
+            "Currently Equipped".to_string(),
+            vec![json!({ "slot": "head", "item_id": 100, "folio_build": "Overload" })],
+        );
+
+        let parsed = parse_gear_comparison_result(&raw, Some(&meta), "top_gear");
+
+        assert_eq!(find_row(&parsed, "Combo 2")["folio_build"], "Echoes");
+        assert_eq!(
+            find_row(&parsed, "Currently Equipped")["folio_build"],
+            "Overload",
+            "the baseline row names its folio too"
         );
     }
 

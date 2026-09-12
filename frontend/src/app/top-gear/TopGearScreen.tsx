@@ -36,6 +36,14 @@ import {
 import type { TopGearLocalItem } from './topGearTypes';
 import { useComputeChoice } from '../lib/useComputeChoice';
 import { buildAlternativeKey } from '../components/gear/topGearIdentity';
+import OmniumFolioPicker from '../components/omnium/OmniumFolioPicker';
+import {
+  extraSelectedCount,
+  folioCombos,
+  parseOmniumEntryIds,
+  seedSelection,
+} from '../components/omnium/omniumSelection';
+import { useOmniumTree } from '../lib/useOmniumTree';
 import {
   collectQuickSelectEntries,
   mergeAlternative,
@@ -47,7 +55,7 @@ import {
 // count is hours of work. Warn past this line, never block.
 const LARGE_LOCAL_SIM_THRESHOLD = 20_000;
 
-type SectionKey = 'items' | 'enchants' | 'gems';
+type SectionKey = 'items' | 'enchants' | 'gems' | 'folio';
 
 // One key for all three, deliberately new: the old per-section keys
 // (simhammer_topgear_{enchants,gems}_open) already hold `false` for anyone who
@@ -58,6 +66,7 @@ const DEFAULT_SECTIONS_OPEN: Record<SectionKey, boolean> = {
   items: true,
   enchants: true,
   gems: true,
+  folio: true,
 };
 
 const DENSITY_STORAGE_KEY = 'simhammer_topgear_density';
@@ -116,7 +125,22 @@ function Chip({
 }
 
 export default function TopGearScreen() {
-  const { simcInput, talentBuilds, fightStyle, targetCount, fightLength } = useSimContext();
+  const {
+    simcInput,
+    talentBuilds,
+    folioSelections,
+    setFolioSelections,
+    fightStyle,
+    targetCount,
+    fightLength,
+  } = useSimContext();
+  const omniumTree = useOmniumTree();
+  // The folio the character was exported with: the picker's starting point, the
+  // baseline the count badge measures against, and what Clear restores.
+  const folioSeed = useMemo(
+    () => (omniumTree ? seedSelection(omniumTree, parseOmniumEntryIds(simcInput)) : {}),
+    [omniumTree, simcInput]
+  );
   const sharedSimPayload = useSharedSimPayload();
   const { t, locale } = useLanguage();
   const [compute, setCompute] = useComputeChoice('top_gear');
@@ -158,6 +182,7 @@ export default function TopGearScreen() {
     items: null,
     enchants: null,
     gems: null,
+    folio: null,
   });
   const pendingScrollRef = useRef<SectionKey | null>(null);
 
@@ -394,6 +419,12 @@ export default function TopGearScreen() {
 
   const clearItems = useCallback(() => setSelectedUids({}), []);
   const clearEnchants = useCallback(() => setEnchantSelections({}), []);
+  // Clearing restores the imported folio rather than emptying the rows —
+  // an empty folio would strip every rune from the sim.
+  const clearFolio = useCallback(
+    () => setFolioSelections(folioSeed),
+    [folioSeed, setFolioSelections]
+  );
   const clearGems = useCallback(() => {
     setGemSelections(new Set());
     // These only apply to selected gems, so leaving them on would silently
@@ -407,11 +438,12 @@ export default function TopGearScreen() {
     clearItems();
     clearEnchants();
     clearGems();
+    clearFolio();
     setLocalItems([]);
     setAddedLootItems([]);
     setPromotedGroups(new Set());
     if (baseResolvedRef.current) setResolved(baseResolvedRef.current);
-  }, [clearItems, clearEnchants, clearGems]);
+  }, [clearItems, clearEnchants, clearGems, clearFolio]);
 
   const setVoidForge = useCallback((v: boolean) => {
     _setVoidForge(v);
@@ -419,6 +451,27 @@ export default function TopGearScreen() {
       localStorage.setItem('simhammer_void_forge', String(v));
     } catch {}
   }, []);
+
+  const folioCombinations = useMemo(
+    () => (omniumTree ? folioCombos(omniumTree, folioSelections) : []),
+    [omniumTree, folioSelections]
+  );
+  const folioExtraCount = useMemo(
+    () => extraSelectedCount(folioSelections, folioSeed),
+    [folioSelections, folioSeed]
+  );
+  const showFolioSection = (omniumTree?.nodes.length ?? 0) > 0;
+
+  /** Store a row's new picks. A row the character has a rune in keeps at least
+   *  one pick, so a stray click can't silently drop it from every combination.
+   *  A row they have nothing in can go back to empty. */
+  const onFolioChange = useCallback(
+    (nodeId: number, entryIds: number[]) => {
+      if (entryIds.length === 0 && (folioSeed[nodeId] ?? []).length > 0) return;
+      setFolioSelections({ ...folioSelections, [nodeId]: entryIds });
+    },
+    [folioSelections, setFolioSelections, folioSeed]
+  );
 
   const itemCount = useMemo(
     () => Object.values(selectedUids).reduce((sum, uids) => sum + uids.size, 0),
@@ -487,16 +540,29 @@ export default function TopGearScreen() {
         onClear: clearGems,
       });
     }
+    if (showFolioSection) {
+      list.push({
+        key: 'folio',
+        label: t('topGear.sectionFolio'),
+        count: folioExtraCount,
+        open: sectionsOpen.folio,
+        onNavigate: () => scrollToSection('folio'),
+        onClear: clearFolio,
+      });
+    }
     return list;
   }, [
     t,
     itemCount,
     enchantCount,
     gemSelections.size,
+    folioExtraCount,
     sectionsOpen,
     showEnchantSection,
     showGemSection,
+    showFolioSection,
     scrollToSection,
+    clearFolio,
     clearItems,
     clearEnchants,
     clearGems,
@@ -533,9 +599,11 @@ export default function TopGearScreen() {
   const buildComboBody = useCallback(() => {
     const hasGearSelection = Object.values(selectedUids).some((v) => v.size > 0);
     const hasTalentCompare = talentBuilds.length > 1;
+    const hasFolioCompare = folioCombinations.length > 1;
     const hasEnchantGem =
       Object.values(enchantSelectionsArray).some((v) => v.length > 0) || gemOptionsArray.length > 0;
-    if (!resolved || (!hasGearSelection && !hasTalentCompare && !hasEnchantGem)) return null;
+    if (!resolved || (!hasGearSelection && !hasTalentCompare && !hasFolioCompare && !hasEnchantGem))
+      return null;
     return {
       simc_input: submitInput,
       selected_items: selectedItemsJson,
@@ -549,6 +617,14 @@ export default function TopGearScreen() {
               talent_string: build.talentString,
             })),
           }
+        : {}),
+      ...(folioCombinations.length > 1 ? { omnium_builds: folioCombinations } : {}),
+      // The count depends on the base actor's folio: it decides whether variant 0
+      // is skipped as the baseline. Without this the preview counts a combo the
+      // run skips. Taken from the shared payload so it is byte-identical to what
+      // submit sends.
+      ...(sharedSimPayload.omnium_talents
+        ? { omnium_talents: sharedSimPayload.omnium_talents }
         : {}),
       catalyst,
       ...(catalystCharges != null ? { catalyst_charges: catalystCharges } : {}),
@@ -567,6 +643,8 @@ export default function TopGearScreen() {
     maxUpgrade,
     copyEnchants,
     talentBuilds,
+    folioCombinations,
+    sharedSimPayload,
     catalyst,
     catalystCharges,
     enchantSelectionsArray,
@@ -630,6 +708,7 @@ export default function TopGearScreen() {
       replace_gems: replaceGems,
       diamond_always_use: diamondAlwaysUse,
       max_colors: maxColors,
+      ...(folioCombinations.length > 1 ? { omnium_builds: folioCombinations } : {}),
       ...(voidForge || hasVoidForgeItems ? { void_forge: true } : {}),
       compute_provider: compute,
     }),
@@ -640,6 +719,7 @@ export default function TopGearScreen() {
       copyEnchants,
 
       talentBuilds,
+      folioCombinations,
       catalyst,
       catalystCharges,
       enchantSelectionsArray,
@@ -985,6 +1065,28 @@ export default function TopGearScreen() {
                   onMaxColorsChange={setMaxColors}
                   density={density}
                   onEmptyChange={setGemsEmpty}
+                />
+              </TopGearSectionPanel>
+            )}
+
+            {showFolioSection && (
+              <TopGearSectionPanel
+                label={t('topGear.sectionFolio')}
+                count={folioExtraCount}
+                tooltip={t('omnium.sectionTooltip')}
+                open={sectionsOpen.folio}
+                onToggle={() => toggleSection('folio')}
+                onClear={clearFolio}
+                clearTitle={t('topGear.clearSection', { section: t('topGear.sectionFolio') })}
+                clearLabel={t('common.clear')}
+                sectionRef={(el) => {
+                  sectionRefs.current.folio = el;
+                }}
+              >
+                <OmniumFolioPicker
+                  selections={folioSelections}
+                  onChange={onFolioChange}
+                  density={density}
                 />
               </TopGearSectionPanel>
             )}

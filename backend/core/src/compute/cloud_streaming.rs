@@ -2209,7 +2209,7 @@ mod orchestrator_tests {
             gem_combo_count: 0,
             gem_combos_resolver: GemCombosResolver::new(vec![]),
             socketed_item_ids: HashSet::new(),
-            talent_builds: vec![],
+            variants: vec![],
             max_catalyst_charges: None,
         }
     }
@@ -2338,7 +2338,7 @@ mod orchestrator_tests {
             gem_combo_count: 0,
             gem_combos_resolver: GemCombosResolver::new(vec![]),
             socketed_item_ids: HashSet::new(),
-            talent_builds: vec![],
+            variants: vec![],
             max_catalyst_charges: None,
         }
     }
@@ -2488,7 +2488,7 @@ mod orchestrator_tests {
             gem_combo_count: 0,
             gem_combos_resolver: GemCombosResolver::new(vec![]),
             socketed_item_ids: HashSet::new(),
-            talent_builds: vec![],
+            variants: vec![],
             max_catalyst_charges: None,
         };
 

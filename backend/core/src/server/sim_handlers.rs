@@ -42,6 +42,7 @@ pub(super) async fn create_sim(
             &upgraded,
             &req.options.talents,
             &req.options.spec_override,
+            &req.options.omnium_talents,
         );
         inject_expert_fields(&preprocessed, &req.options)
     };

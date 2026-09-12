@@ -32,8 +32,12 @@ pub(super) async fn create_droptimizer_sim(
         Some(rank) => crate::item_db::upgrade_simc_input_to_rank(&req.simc_input, rank),
         None => req.simc_input.clone(),
     };
-    let simc_input =
-        preprocess_simc_input(&raw_input, &req.options.talents, &req.options.spec_override);
+    let simc_input = preprocess_simc_input(
+        &raw_input,
+        &req.options.talents,
+        &req.options.spec_override,
+        &req.options.omnium_talents,
+    );
     let parse_result = addon_parser::parse_simc_input(&simc_input);
     let base_profile = parse_result.base_profile.clone();
 

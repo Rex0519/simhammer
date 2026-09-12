@@ -38,6 +38,20 @@ fn normalized_talent_builds(talent_builds: &[TalentBuild]) -> Vec<(String, Strin
         .collect()
 }
 
+/// The request's profile-variant axis: normalized talent builds crossed with
+/// the folio combinations the user selected.
+pub(super) fn request_variants(req: &TopGearRequest) -> Vec<profileset_generator::ProfileVariant> {
+    let folio_builds: Vec<(String, String)> = req
+        .omnium_builds
+        .iter()
+        .map(|ob| (ob.name.clone(), ob.omnium_string.clone()))
+        .collect();
+    profileset_generator::variants_from(
+        &normalized_talent_builds(&req.talent_builds),
+        &folio_builds,
+    )
+}
+
 fn build_items_by_slot(
     req: &TopGearRequest,
     resolved: &crate::types::ResolveGearResponse,
@@ -76,8 +90,12 @@ pub(super) async fn create_top_gear_sim(
     } else {
         req.simc_input.clone()
     };
-    let simc_input =
-        preprocess_simc_input(&raw_input, &req.options.talents, &req.options.spec_override);
+    let simc_input = preprocess_simc_input(
+        &raw_input,
+        &req.options.talents,
+        &req.options.spec_override,
+        &req.options.omnium_talents,
+    );
 
     let parse_result = addon_parser::parse_simc_input(&simc_input);
     let currency_id_sim = crate::item_db::catalyst_currency_id();
@@ -95,7 +113,7 @@ pub(super) async fn create_top_gear_sim(
     }
     let base_profile = resolved.base_profile.clone();
     let items_by_slot = build_items_by_slot(&req, &resolved);
-    let talent_builds = normalized_talent_builds(&req.talent_builds);
+    let variants = request_variants(&req);
     let max_combinations = capped_max_combinations(req.max_combinations);
     let socketed_ids = socketed_item_ids(&resolved);
     let gem_opts = profileset_generator::GemEnchantOptions {
@@ -110,12 +128,12 @@ pub(super) async fn create_top_gear_sim(
     // Exact combo count, counted once: drives the zero-guard, streaming-vs-eager
     // routing, and (streaming) credit reservation + progress denominator. Err
     // (TooMany) falls through to the eager path, which re-counts and re-surfaces it.
-    let exact_combos: u64 = match profileset_generator::count_top_gear_combos_with_talents(
+    let exact_combos: u64 = match profileset_generator::count_top_gear_combos_with_variants(
         &base_profile,
         &items_by_slot,
         &req.selected_items,
         max_combinations,
-        &talent_builds,
+        &variants,
         catalyst_charges,
         &gem_opts,
     ) {
@@ -143,7 +161,7 @@ pub(super) async fn create_top_gear_sim(
         &req.enchant_selections,
         &req.gem_options,
         &socketed_ids,
-        talent_builds.len().max(1),
+        variants.len().max(1),
     );
 
     // WorkloadEstimate combo_count: prefer the exact count, fall back to `estimate`
@@ -182,7 +200,7 @@ pub(super) async fn create_top_gear_sim(
                 log_buffer,
                 base_profile,
                 items_by_slot,
-                talent_builds,
+                variants,
                 socketed_ids,
                 catalyst_charges,
                 max_combinations,
@@ -202,12 +220,12 @@ pub(super) async fn create_top_gear_sim(
 
     // ── Existing eager path (unchanged) ──────────────────────────────────────
     let (generated_input, combo_count, combo_metadata) =
-        match profileset_generator::generate_top_gear_input_with_talents(
+        match profileset_generator::generate_top_gear_input_with_variants(
             &base_profile,
             &items_by_slot,
             &req.selected_items,
             max_combinations,
-            &talent_builds,
+            &variants,
             catalyst_charges,
             &gem_opts,
         ) {
@@ -219,9 +237,13 @@ pub(super) async fn create_top_gear_sim(
 
     let has_enchant_gem =
         req.enchant_selections.values().any(|v| !v.is_empty()) || !req.gem_options.is_empty();
-    if combo_count == 0 && req.talent_builds.len() <= 1 && !has_enchant_gem {
+    if combo_count == 0
+        && req.talent_builds.len() <= 1
+        && req.omnium_builds.len() <= 1
+        && !has_enchant_gem
+    {
         return HttpResponse::BadRequest().json(json!({
-            "detail": "No alternative items selected. Select at least one non-equipped item or multiple talent builds."
+            "detail": "No alternative items selected. Select at least one non-equipped item, multiple talent builds, or more folio runes."
         }));
     }
 
@@ -240,7 +262,7 @@ pub(super) async fn create_top_gear_sim(
         "replace_gems": req.replace_gems,
         "diamond_always_use": req.diamond_always_use,
         "max_colors": req.max_colors,
-        "talent_builds": talent_builds,
+        "variants": variants,
         "catalyst_charges": catalyst_charges,
         "spec": req.options.spec_override,
         "base_profile": base_profile,
@@ -276,8 +298,12 @@ pub(super) async fn get_top_gear_combo_count(req: web::Json<TopGearRequest>) -> 
     } else {
         req.simc_input.clone()
     };
-    let simc_input =
-        preprocess_simc_input(&raw_input, &req.options.talents, &req.options.spec_override);
+    let simc_input = preprocess_simc_input(
+        &raw_input,
+        &req.options.talents,
+        &req.options.spec_override,
+        &req.options.omnium_talents,
+    );
 
     let parse_result = addon_parser::parse_simc_input(&simc_input);
     let currency_id = crate::item_db::catalyst_currency_id();
@@ -295,7 +321,7 @@ pub(super) async fn get_top_gear_combo_count(req: web::Json<TopGearRequest>) -> 
     }
     let base_profile = resolved.base_profile.clone();
     let items_by_slot = build_items_by_slot(&req, &resolved);
-    let talent_builds = normalized_talent_builds(&req.talent_builds);
+    let variants = request_variants(&req);
     let max_combinations = capped_max_combinations(req.max_combinations);
     let socketed_item_ids = socketed_item_ids(&resolved);
     let gem_opts = profileset_generator::GemEnchantOptions {
@@ -307,12 +333,12 @@ pub(super) async fn get_top_gear_combo_count(req: web::Json<TopGearRequest>) -> 
         max_colors: req.max_colors,
     };
 
-    match profileset_generator::count_top_gear_combos_with_talents(
+    match profileset_generator::count_top_gear_combos_with_variants(
         &base_profile,
         &items_by_slot,
         &req.selected_items,
         max_combinations,
-        &talent_builds,
+        &variants,
         catalyst_charges,
         &gem_opts,
     ) {

@@ -451,6 +451,12 @@ export function getWowheadUrl(itemId: number, locale?: string): string {
   return `https://${domain}/item=${itemId}`;
 }
 
+/** Wowhead spell link, for the passives behind talents and folio runes. */
+export function getWowheadSpellUrl(spellId: number, locale?: string): string {
+  const domain = (locale && WOWHEAD_DOMAINS[locale]) || 'www.wowhead.com';
+  return `https://${domain}/spell=${spellId}`;
+}
+
 /** Normalize the two gem-id shapes (legacy `gem_id`, full `gem_ids` array) into one
  *  filtered list. Use whenever rendering or querying Wowhead with a slot's gems. */
 export function toGemIdList(opts: { gem_id?: number; gem_ids?: number[] }): number[] {

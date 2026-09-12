@@ -214,6 +214,10 @@ pub(super) fn configure(cfg: &mut web::ServiceConfig) {
             "/api/talent-tree/{specId}",
             web::get().to(game_data_handlers::get_talent_tree),
         )
+        .route(
+            "/api/omnium-tree",
+            web::get().to(game_data_handlers::get_omnium_tree),
+        )
         .route("/api/config", web::get().to(system_handlers::get_config))
         .route(
             "/api/branches",

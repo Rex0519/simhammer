@@ -77,23 +77,6 @@ async fn fetch_available_credits(
     Ok(result.credits_available)
 }
 
-fn normalized_talent_builds(talent_builds: &[super::types::TalentBuild]) -> Vec<(String, String)> {
-    talent_builds
-        .iter()
-        .map(|tb| {
-            let normalized = crate::talent_normalize::normalize_simc_talents(&format!(
-                "talents={}",
-                tb.talent_string
-            ));
-            let ts = normalized
-                .strip_prefix("talents=")
-                .unwrap_or(&tb.talent_string)
-                .to_string();
-            (tb.name.clone(), ts)
-        })
-        .collect()
-}
-
 pub(super) async fn cloud_estimate_top_gear(
     http_req: HttpRequest,
     req: web::Json<TopGearRequest>,
@@ -108,8 +91,12 @@ pub(super) async fn cloud_estimate_top_gear(
     } else {
         req.simc_input.clone()
     };
-    let simc_input =
-        preprocess_simc_input(&raw_input, &req.options.talents, &req.options.spec_override);
+    let simc_input = preprocess_simc_input(
+        &raw_input,
+        &req.options.talents,
+        &req.options.spec_override,
+        &req.options.omnium_talents,
+    );
 
     let parse_result = addon_parser::parse_simc_input(&simc_input);
     let currency_id = crate::item_db::catalyst_currency_id();
@@ -139,7 +126,8 @@ pub(super) async fn cloud_estimate_top_gear(
         items_by_slot = game_data::apply_copy_enchants(&items_by_slot);
     }
 
-    let talent_builds = normalized_talent_builds(&req.talent_builds);
+    // Same axis the run itself will use, so the credit estimate can't drift.
+    let variants = super::top_gear_handlers::request_variants(&req);
     let max_combinations = capped_max_combinations(req.max_combinations);
     let socketed_ids = socketed_item_ids(&resolved);
     let gem_opts = profileset_generator::GemEnchantOptions {
@@ -151,12 +139,12 @@ pub(super) async fn cloud_estimate_top_gear(
         max_colors: req.max_colors,
     };
 
-    let combos = match profileset_generator::count_top_gear_combos_with_talents(
+    let combos = match profileset_generator::count_top_gear_combos_with_variants(
         &base_profile,
         &items_by_slot,
         &req.selected_items,
         max_combinations,
-        &talent_builds,
+        &variants,
         catalyst_charges,
         &gem_opts,
     ) {

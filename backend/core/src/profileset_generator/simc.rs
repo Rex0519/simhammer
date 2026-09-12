@@ -4,6 +4,31 @@ pub(super) use crate::simc_string::{
 
 const BASE64: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+/// The `omnium_talents=` value from a profile, or empty when it has no folio
+/// line. Used to tell a variant that matches the base actor from one that needs
+/// its own override.
+pub(super) fn extract_omnium_value(profile: &str) -> String {
+    profile
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("omnium_talents="))
+        .unwrap_or("")
+        .trim()
+        .to_string()
+}
+
+/// Whether two `omnium_talents=` values name the same runes. Order-insensitive
+/// on purpose: the addon exports runes bottom row first while the picker builds
+/// them top row first, and a folio that only differs in order is the same actor
+/// — comparing the raw strings would re-sim the baseline as a "new" folio.
+pub(super) fn same_folio(a: &str, b: &str) -> bool {
+    let pairs = |v: &str| {
+        let mut parts: Vec<&str> = v.split('/').filter(|p| !p.is_empty()).collect();
+        parts.sort_unstable();
+        parts.join("/")
+    };
+    pairs(a) == pairs(b)
+}
+
 pub(super) fn extract_spec_id_from_talent_string(talent_str: &str) -> Option<u64> {
     let mut bits = Vec::new();
     for ch in talent_str.bytes() {
@@ -218,6 +243,41 @@ mod tests {
     fn is_diamond_false_for_unknown_id() {
         ensure_game_data_loaded();
         assert!(!is_diamond(99999999));
+    }
+
+    #[test]
+    fn same_folio_ignores_rune_order() {
+        assert!(same_folio("136814:1/136818:1", "136818:1/136814:1"));
+        assert!(same_folio("", ""));
+    }
+
+    #[test]
+    fn same_folio_separates_different_runes() {
+        assert!(!same_folio("136814:1/136818:1", "136826:1/136818:1"));
+        assert!(!same_folio("136814:1", "136814:1/136818:1"));
+        assert!(!same_folio("136814:1", ""));
+    }
+
+    #[test]
+    fn extract_omnium_value_reads_the_folio_line() {
+        let profile = "hunter=t
+spec=beast_mastery
+omnium_talents=136814:1/136818:1
+head=,id=1
+";
+        assert_eq!(extract_omnium_value(profile), "136814:1/136818:1");
+    }
+
+    #[test]
+    fn extract_omnium_value_is_empty_without_a_folio_line() {
+        assert_eq!(
+            extract_omnium_value(
+                "hunter=t
+talents=ABC
+"
+            ),
+            ""
+        );
     }
 
     #[test]

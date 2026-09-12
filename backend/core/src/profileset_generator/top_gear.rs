@@ -8,7 +8,7 @@ use super::simc::{
     extract_enchant_id, extract_gem_id, extract_gem_ids, extract_item_id,
     extract_spec_id_from_talent_string, is_diamond, simc_socket_count,
 };
-use super::{GemEnchantOptions, ProfilesetResult, MAX_COMBINATIONS};
+use super::{GemEnchantOptions, ProfileVariant, ProfilesetResult, MAX_COMBINATIONS};
 use crate::types::class_data::{self};
 
 /// Build a [`ProfilesetIteratorConfig`] for both the streaming/triage path and
@@ -22,7 +22,7 @@ pub(crate) fn build_iterator_config(
     base_profile: &str,
     items_by_slot: &HashMap<String, Vec<Value>>,
     selected_items: &HashMap<String, Vec<String>>,
-    talent_builds: &[(String, String)],
+    variants: &[ProfileVariant],
     gem_opts: &GemEnchantOptions,
     catalyst_charges: Option<u32>,
 ) -> super::iterator::ProfilesetIteratorConfig {
@@ -206,7 +206,7 @@ pub(crate) fn build_iterator_config(
 
     let socketed_ids_owned: std::collections::HashSet<u64> =
         socketed_item_ids.iter().copied().collect();
-    let talent_builds_owned: Vec<(String, String)> = talent_builds.to_vec();
+    let variants_owned: Vec<ProfileVariant> = variants.to_vec();
 
     ProfilesetIteratorConfig {
         spec,
@@ -217,7 +217,7 @@ pub(crate) fn build_iterator_config(
         gem_combo_count,
         gem_combos_resolver,
         socketed_item_ids: socketed_ids_owned,
-        talent_builds: talent_builds_owned,
+        variants: variants_owned,
         max_catalyst_charges: catalyst_charges,
     }
 }
@@ -232,7 +232,7 @@ pub fn generate_top_gear_input(
     selected_items: &HashMap<String, Vec<String>>,
     max_combos_override: Option<usize>,
 ) -> ProfilesetResult {
-    generate_top_gear_input_with_talents(
+    generate_top_gear_input_with_variants(
         base_profile,
         items_by_slot,
         selected_items,
@@ -245,12 +245,12 @@ pub fn generate_top_gear_input(
 
 /// Count-only variant. Gates on the O(axes) analytic upper-bound, then walks the
 /// full iterator for the exact count — cheaper than the full emit pipeline.
-pub fn count_top_gear_combos_with_talents(
+pub fn count_top_gear_combos_with_variants(
     base_profile: &str,
     items_by_slot: &HashMap<String, Vec<Value>>,
     selected_items: &HashMap<String, Vec<String>>,
     max_combos_override: Option<usize>,
-    talent_builds: &[(String, String)],
+    variants: &[ProfileVariant],
     catalyst_charges: Option<u32>,
     gem_opts: &GemEnchantOptions,
 ) -> Result<usize, String> {
@@ -265,7 +265,7 @@ pub fn count_top_gear_combos_with_talents(
             gem_opts.enchants(),
             gem_opts.gem_options,
             gem_opts.sockets(),
-            talent_builds.len().max(1),
+            variants.len().max(1),
         );
         if est > limit as u64 {
             return Err(format!(
@@ -278,7 +278,7 @@ pub fn count_top_gear_combos_with_talents(
         base_profile,
         items_by_slot,
         selected_items,
-        talent_builds,
+        variants,
         gem_opts,
         catalyst_charges,
     );
@@ -289,12 +289,12 @@ pub fn count_top_gear_combos_with_talents(
 /// enchant/gem variations. Delegates enumeration entirely to
 /// [`ProfilesetIterator`] (single pipeline).
 #[allow(clippy::too_many_arguments)]
-pub fn generate_top_gear_input_with_talents(
+pub fn generate_top_gear_input_with_variants(
     base_profile: &str,
     items_by_slot: &HashMap<String, Vec<Value>>,
     selected_items: &HashMap<String, Vec<String>>,
     max_combos_override: Option<usize>,
-    talent_builds: &[(String, String)],
+    variants: &[ProfileVariant],
     catalyst_charges: Option<u32>,
     gem_opts: &GemEnchantOptions,
 ) -> ProfilesetResult {
@@ -309,7 +309,7 @@ pub fn generate_top_gear_input_with_talents(
             gem_opts.enchants(),
             gem_opts.gem_options,
             gem_opts.sockets(),
-            talent_builds.len().max(1),
+            variants.len().max(1),
         );
         if est > limit as u64 {
             return Err(format!(
@@ -321,14 +321,34 @@ pub fn generate_top_gear_input_with_talents(
     // Parse base profile for base-actor emit and baseline metadata.
     let (base_lines, equipped_gear, talents_string, spec) = parse_base_profile(base_profile);
 
-    let effective_talents: Vec<(String, String)> = if talent_builds.is_empty() {
-        vec![("".to_string(), talents_string.clone())]
+    // A variant that doesn't vary talents (a folio-only run) carries an empty
+    // talent string; it must still inherit the profile's own talents, or the
+    // base actor below is emitted with no `talents=` line at all — a talentless
+    // actor, which scores nonsense and segfaults some specs.
+    let effective_variants: Vec<ProfileVariant> = if variants.is_empty() {
+        vec![ProfileVariant {
+            talent_string: talents_string.clone(),
+            ..Default::default()
+        }]
     } else {
-        talent_builds.to_vec()
+        variants
+            .iter()
+            .map(|v| ProfileVariant {
+                talent_string: if v.talent_string.is_empty() {
+                    talents_string.clone()
+                } else {
+                    v.talent_string.clone()
+                },
+                ..v.clone()
+            })
+            .collect()
     };
-    let has_talent_variants = effective_talents.len() > 1;
+    // Per axis half: a folio-only run must not rename the baseline after a talent
+    // build it never had, and vice versa.
+    let has_talent_variants = ProfileVariant::talents_vary(&effective_variants);
+    let has_folio_variants = ProfileVariant::folios_vary(&effective_variants);
 
-    let base_talent = &effective_talents[0].1;
+    let base_talent = &effective_variants[0].talent_string;
     let base_actor_spec: String = if !base_talent.is_empty() {
         extract_spec_id_from_talent_string(base_talent)
             .and_then(class_data::spec_id_to_name)
@@ -366,10 +386,20 @@ pub fn generate_top_gear_input_with_talents(
                 }
             }
         }
+        if has_folio_variants {
+            let folio_name = &effective_variants[0].folio_name;
+            if baseline_items.is_empty() {
+                baseline_items.push(json!({ "folio_build": folio_name, "is_kept": true }));
+            } else {
+                for item in &mut baseline_items {
+                    item["folio_build"] = json!(folio_name);
+                }
+            }
+        }
         let baseline_name = if has_talent_variants {
-            let talent_name = &effective_talents[0].0;
+            let talent_name = &effective_variants[0].name;
             let talent_spec: Option<&str> =
-                extract_spec_id_from_talent_string(&effective_talents[0].1)
+                extract_spec_id_from_talent_string(&effective_variants[0].talent_string)
                     .and_then(class_data::spec_id_to_name);
             if baseline_items.is_empty() {
                 baseline_items.push(json!({
@@ -395,7 +425,7 @@ pub fn generate_top_gear_input_with_talents(
         base_profile,
         items_by_slot,
         selected_items,
-        talent_builds,
+        variants,
         gem_opts,
         catalyst_charges,
     );

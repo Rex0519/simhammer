@@ -5,18 +5,21 @@
 use serde_json::Value;
 use std::collections::HashSet;
 
-use super::simc_input::{apply_spec_override, apply_talent_override};
+use super::simc_input::{apply_omnium_override, apply_spec_override, apply_talent_override};
 
-/// Apply the standard talent-override → spec-override → talent-normalize chain
-/// that every sim handler runs before parsing the simc input. Single source of
-/// truth so the ordering can't drift between handlers.
+/// Apply the standard talent-override → spec-override → omnium-override →
+/// talent-normalize chain that every sim handler runs before parsing the simc
+/// input. Single source of truth so the ordering can't drift between handlers.
 pub(super) fn preprocess_simc_input(
     simc_input: &str,
     talents: &str,
     spec_override: &str,
+    omnium: &str,
 ) -> String {
-    let with_overrides =
-        apply_spec_override(&apply_talent_override(simc_input, talents), spec_override);
+    let with_overrides = apply_omnium_override(
+        &apply_spec_override(&apply_talent_override(simc_input, talents), spec_override),
+        omnium,
+    );
     crate::talent_normalize::normalize_simc_talents(&with_overrides)
 }
 
@@ -94,7 +97,7 @@ mod tests {
     #[test]
     fn preprocess_applies_talent_then_spec_override() {
         let input = "warrior=t\nspec=arms\nhead=,id=1\n";
-        let out = preprocess_simc_input(input, "ABBA", "fury");
+        let out = preprocess_simc_input(input, "ABBA", "fury", "");
         assert!(
             out.contains("talents=ABBA"),
             "talents override missing: {out}"
@@ -103,9 +106,23 @@ mod tests {
     }
 
     #[test]
+    fn preprocess_applies_the_omnium_override() {
+        let input = "hunter=t\nspec=beast_mastery\nomnium_talents=136814:1\nhead=,id=1\n";
+        let out = preprocess_simc_input(input, "", "", "136824:1/136815:1");
+        assert!(
+            out.contains("omnium_talents=136824:1/136815:1"),
+            "omnium override missing: {out}"
+        );
+        assert!(
+            !out.contains("omnium_talents=136814:1"),
+            "the exported folio must be replaced, not kept: {out}"
+        );
+    }
+
+    #[test]
     fn preprocess_empty_overrides_are_noops() {
         let input = "warrior=t\nspec=arms\nhead=,id=1\n";
-        let out = preprocess_simc_input(input, "", "");
+        let out = preprocess_simc_input(input, "", "", "");
         // No talents= / spec= lines were forced in by empty overrides.
         assert!(
             !out.contains("talents="),

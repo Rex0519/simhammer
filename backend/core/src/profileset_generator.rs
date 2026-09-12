@@ -131,6 +131,88 @@ impl<'a> GemEnchantOptions<'a> {
     }
 }
 
+/// One position on the profile-variant axis: a talent build crossed with a
+/// folio combination. Either half may be empty, meaning "override nothing".
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct ProfileVariant {
+    /// Talent build name. Surfaces as the `talent_build` metadata tag.
+    pub name: String,
+    pub talent_string: String,
+    /// Folio combination name. Surfaces as the `folio_build` metadata tag.
+    pub folio_name: String,
+    /// `<entryId>:<rank>` pairs for `omnium_talents=`.
+    pub omnium_string: String,
+}
+
+impl ProfileVariant {
+    /// Whether the talent half of the axis actually varies. Counts distinct
+    /// `(name, talent_string)` pairs, not strings alone: two differently-named
+    /// builds can carry the same string (API duplicates, or builds that converge
+    /// under normalization) and both still deserve their `talent_build` badge.
+    pub(crate) fn talents_vary(variants: &[ProfileVariant]) -> bool {
+        variants
+            .iter()
+            .map(|v| (&v.name, &v.talent_string))
+            .collect::<HashSet<_>>()
+            .len()
+            > 1
+    }
+
+    /// Whether the folio half of the axis actually varies. Folios are compared
+    /// by value — an identically-named folio is the same folio.
+    pub(crate) fn folios_vary(variants: &[ProfileVariant]) -> bool {
+        variants
+            .iter()
+            .map(|v| &v.omnium_string)
+            .collect::<HashSet<_>>()
+            .len()
+            > 1
+    }
+}
+
+/// Cross talent builds with folio combinations into the variant axis, talent-major.
+/// Position 0 stays the baseline pair, so the iterator's "index 0 is the base
+/// actor" rule still holds. An empty axis contributes nothing instead of
+/// collapsing the product to zero.
+pub fn variants_from(
+    talent_builds: &[(String, String)],
+    folio_builds: &[(String, String)],
+) -> Vec<ProfileVariant> {
+    match (talent_builds.is_empty(), folio_builds.is_empty()) {
+        (true, true) => Vec::new(),
+        (false, true) => talent_builds
+            .iter()
+            .map(|(name, ts)| ProfileVariant {
+                name: name.clone(),
+                talent_string: ts.clone(),
+                ..Default::default()
+            })
+            .collect(),
+        (true, false) => folio_builds
+            .iter()
+            .map(|(name, omnium)| ProfileVariant {
+                folio_name: name.clone(),
+                omnium_string: omnium.clone(),
+                ..Default::default()
+            })
+            .collect(),
+        (false, false) => talent_builds
+            .iter()
+            .flat_map(|(tname, ts)| {
+                folio_builds
+                    .iter()
+                    .map(move |(fname, omnium)| ProfileVariant {
+                        name: tname.clone(),
+                        talent_string: ts.clone(),
+                        folio_name: fname.clone(),
+                        omnium_string: omnium.clone(),
+                    })
+            })
+            .collect(),
+    }
+}
+
 pub fn generate_top_gear_input(
     base_profile: &str,
     items_by_slot: &HashMap<String, Vec<Value>>,
@@ -145,21 +227,24 @@ pub fn generate_top_gear_input(
     )
 }
 
-pub fn generate_top_gear_input_with_talents(
+/// Top Gear generation multiplied by the profile-variant axis (talent builds
+/// crossed with folio combinations).
+#[allow(clippy::too_many_arguments)]
+pub fn generate_top_gear_input_with_variants(
     base_profile: &str,
     items_by_slot: &HashMap<String, Vec<Value>>,
     selected_items: &HashMap<String, Vec<String>>,
     max_combos_override: Option<usize>,
-    talent_builds: &[(String, String)],
+    variants: &[ProfileVariant],
     catalyst_charges: Option<u32>,
     gem_opts: &GemEnchantOptions,
 ) -> ProfilesetResult {
-    top_gear::generate_top_gear_input_with_talents(
+    top_gear::generate_top_gear_input_with_variants(
         base_profile,
         items_by_slot,
         selected_items,
         max_combos_override,
-        talent_builds,
+        variants,
         catalyst_charges,
         gem_opts,
     )
@@ -168,21 +253,22 @@ pub fn generate_top_gear_input_with_talents(
 /// Count-only fast path. Skips building the simc_input string and metadata,
 /// returning just the emitted profileset count. Hit by the live UI combo-count
 /// endpoint on every selection toggle, so it must be cheap.
-pub fn count_top_gear_combos_with_talents(
+#[allow(clippy::too_many_arguments)]
+pub fn count_top_gear_combos_with_variants(
     base_profile: &str,
     items_by_slot: &HashMap<String, Vec<Value>>,
     selected_items: &HashMap<String, Vec<String>>,
     max_combos_override: Option<usize>,
-    talent_builds: &[(String, String)],
+    variants: &[ProfileVariant],
     catalyst_charges: Option<u32>,
     gem_opts: &GemEnchantOptions,
 ) -> Result<usize, String> {
-    top_gear::count_top_gear_combos_with_talents(
+    top_gear::count_top_gear_combos_with_variants(
         base_profile,
         items_by_slot,
         selected_items,
         max_combos_override,
-        talent_builds,
+        variants,
         catalyst_charges,
         gem_opts,
     )
@@ -327,9 +413,9 @@ mod classifier_tests {
 #[cfg(test)]
 mod tests {
     use super::{
-        count_top_gear_combos_with_talents, generate_droptimizer_input,
-        generate_top_gear_input_with_talents, generate_upgrade_compare_input, CraftedEmbellishment,
-        GemEnchantOptions,
+        count_top_gear_combos_with_variants, generate_droptimizer_input,
+        generate_top_gear_input_with_variants, generate_upgrade_compare_input, variants_from,
+        CraftedEmbellishment, GemEnchantOptions, ProfileVariant,
     };
     use crate::test_support::{ensure_game_data_loaded, TestItem};
     use serde_json::json;
@@ -500,7 +586,7 @@ finger1=,id=102,gem_id=213453\n";
         let colored_gem_id = 213453_u64;
 
         let gems = [diamond_id, colored_gem_id];
-        let (input, combo_count, metadata) = generate_top_gear_input_with_talents(
+        let (input, combo_count, metadata) = generate_top_gear_input_with_variants(
             base_profile,
             &HashMap::new(),
             &HashMap::new(),
@@ -599,7 +685,7 @@ main_hand=,id=265337\n";
         // Only the neck is offered as a gem slot: the added head already carries a
         // gem, so with replace_gems off the generator leaves it alone.
         let sockets = HashSet::from([273781_u64, 249988_u64]);
-        let (input, _combo_count, metadata) = generate_top_gear_input_with_talents(
+        let (input, _combo_count, metadata) = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
@@ -656,7 +742,7 @@ finger1=,id=220001,bonus_id=13534\n";
         let other_colored = 213465_u64; // sapphire (a non-diamond gem to fill the socket)
 
         let gems = [diamond_id, other_colored];
-        let (input, _combo_count, _metadata) = generate_top_gear_input_with_talents(
+        let (input, _combo_count, _metadata) = generate_top_gear_input_with_variants(
             base_profile,
             &HashMap::new(),
             &HashMap::new(),
@@ -737,7 +823,7 @@ main_hand=,id=200\n";
         // 3 gems, 2 sockets → 6 multisets: AA, AB, AC, BB, BC, CC.
         let gems = [213453_u64, 213454_u64, 213455_u64];
         let sockets = HashSet::from([500_u64]);
-        let (input, combo_count, _) = generate_top_gear_input_with_talents(
+        let (input, combo_count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
@@ -837,7 +923,7 @@ main_hand=,id=200\n";
 
         let gems = [213453_u64, 213454_u64, 213455_u64, 213456_u64];
         let sockets = HashSet::from([300_u64]);
-        let (input, combo_count, _) = generate_top_gear_input_with_talents(
+        let (input, combo_count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
@@ -883,7 +969,7 @@ main_hand=,id=200\n";
 
         let gems = [240900_u64, 240890_u64, 240892_u64];
         let sockets = HashSet::from([250247_u64]);
-        let (_input, _combo_count, metadata) = generate_top_gear_input_with_talents(
+        let (_input, _combo_count, metadata) = generate_top_gear_input_with_variants(
             base_profile,
             &HashMap::new(),
             &HashMap::new(),
@@ -933,7 +1019,7 @@ main_hand=,id=200\n";
 
         let gems = [213454_u64, 213455_u64];
         let sockets = HashSet::from([100_u64]);
-        let (_input, combo_count, _) = generate_top_gear_input_with_talents(
+        let (_input, combo_count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &HashMap::new(),
             &HashMap::new(),
@@ -1008,7 +1094,7 @@ main_hand=,id=200\n";
 
         let gems = [213454_u64, 213455_u64, 213456_u64, 213457_u64];
         let sockets = HashSet::from([100_u64, 300_u64]);
-        let (input, combo_count, metadata) = generate_top_gear_input_with_talents(
+        let (input, combo_count, metadata) = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
@@ -1078,7 +1164,7 @@ main_hand=,id=200\n";
     fn top_gear_returns_zero_with_no_selections_no_variants() {
         ensure_game_data_loaded();
         let base_profile = "mage=test\nspec=frost\nhead=,id=100\n";
-        let (_, count, _) = generate_top_gear_input_with_talents(
+        let (_, count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &HashMap::new(),
             &HashMap::new(),
@@ -1105,7 +1191,7 @@ main_hand=,id=200\n";
         let mut selected = HashMap::new();
         selected.insert("head".to_string(), vec![uid(200, &[], "bags", "head")]);
 
-        let (_, count, _) = generate_top_gear_input_with_talents(
+        let (_, count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
@@ -1138,7 +1224,7 @@ main_hand=,id=200\n";
         selected.insert("chest".to_string(), vec![uid(201, &[], "bags", "chest")]);
 
         // 2 slots × 2 options = 4 combos, minus baseline = 3. Set limit to 1.
-        let result = generate_top_gear_input_with_talents(
+        let result = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
@@ -1173,12 +1259,12 @@ main_hand=,id=200\n";
             ("Build B".to_string(), "BBBB".to_string()),
         ];
 
-        let (input, count, _) = generate_top_gear_input_with_talents(
+        let (input, count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
             Some(50),
-            &talents,
+            &variants_from(&talents, &[]),
             None,
             &GemEnchantOptions::default(),
         )
@@ -1210,7 +1296,7 @@ finger2=,id=101\n";
         selected.insert("finger1".to_string(), vec![uid(99, &[], "bags", "finger1")]);
         selected.insert("finger2".to_string(), vec![uid(99, &[], "bags", "finger2")]);
 
-        let (input, _count, _) = generate_top_gear_input_with_talents(
+        let (input, _count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
@@ -1253,7 +1339,7 @@ finger2=,id=101\n";
         selected.insert("head".to_string(), vec![uid(200, &[], "vault", "head")]);
         selected.insert("chest".to_string(), vec![uid(201, &[], "vault", "chest")]);
 
-        let (input, count, _) = generate_top_gear_input_with_talents(
+        let (input, count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
@@ -1300,7 +1386,7 @@ finger2=,id=101\n";
         selected.insert("chest".to_string(), vec![uid(201, &[], "bags", "chest")]);
 
         // catalyst_charges=1 → max 1 catalyst item per combo.
-        let (_, count, _) = generate_top_gear_input_with_talents(
+        let (_, count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
@@ -1323,7 +1409,7 @@ finger2=,id=101\n";
         let mut enchant_selections = HashMap::new();
         enchant_selections.insert("head".to_string(), vec![7001_u64, 7002_u64]);
 
-        let (input, count, _) = generate_top_gear_input_with_talents(
+        let (input, count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &HashMap::new(),
             &HashMap::new(),
@@ -1350,7 +1436,7 @@ finger2=,id=101\n";
 
         let gems = [213454_u64]; // a different colored gem
         let sockets = HashSet::from([100_u64]);
-        let (input, count, _) = generate_top_gear_input_with_talents(
+        let (input, count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &HashMap::new(),
             &HashMap::new(),
@@ -1386,7 +1472,7 @@ finger2=,id=101\n";
         let mut selected = HashMap::new();
         selected.insert("head".to_string(), vec![uid(100, &[], "equipped", "head")]);
 
-        let (_, count, _) = generate_top_gear_input_with_talents(
+        let (_, count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
@@ -1413,7 +1499,7 @@ finger2=,id=101\n";
         let mut selected = HashMap::new();
         selected.insert("head".to_string(), vec![uid(200, &[], "bags", "head")]);
 
-        let (_, _, metadata) = generate_top_gear_input_with_talents(
+        let (_, _, metadata) = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
@@ -1552,7 +1638,7 @@ main_hand=,id=200\n";
             ..Default::default()
         };
 
-        let (_, full_count, _) = generate_top_gear_input_with_talents(
+        let (_, full_count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
@@ -1563,7 +1649,7 @@ main_hand=,id=200\n";
         )
         .unwrap();
 
-        let fast_count = count_top_gear_combos_with_talents(
+        let fast_count = count_top_gear_combos_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
@@ -1623,7 +1709,7 @@ main_hand=,id=200\n";
             ..Default::default()
         };
 
-        let exact = super::count_top_gear_combos_with_talents(
+        let exact = super::count_top_gear_combos_with_variants(
             &base,
             &items_by_slot,
             &selected,
@@ -1653,7 +1739,7 @@ main_hand=,id=200\n";
     #[test]
     fn iterator_emit_count_matches_exact_count_for_gems() {
         // The cloud progress bar's denominator is the exact count
-        // (count_top_gear_combos_with_talents). This locks the invariant that
+        // (count_top_gear_combos_with_variants). This locks the invariant that
         // makes that correct: the streaming ProfilesetIterator emits exactly that
         // many profilesets, so the bar reaches 100% (and the credit estimate
         // matches the work billed).
@@ -1662,7 +1748,7 @@ main_hand=,id=200\n";
         // Production-shaped inputs: a populated items_by_slot (equipped + a
         // selected socketed alt per slot) so the count function and the iterator
         // see the SAME gear/socket data, plus several gems. This mirrors what the
-        // cloud submit path passes to both `count_top_gear_combos_with_talents`
+        // cloud submit path passes to both `count_top_gear_combos_with_variants`
         // (credits + progress denominator) and `build_iterator_config` (the run).
         let socketed: HashSet<u64> = HashSet::from([301_u64, 302, 303]);
         let mut base = String::from("mage=test\nspec=frost\n");
@@ -1697,7 +1783,7 @@ main_hand=,id=200\n";
             ..Default::default()
         };
 
-        let exact = super::count_top_gear_combos_with_talents(
+        let exact = super::count_top_gear_combos_with_variants(
             &base,
             &items_by_slot,
             &selected,
@@ -1749,7 +1835,7 @@ main_hand=,id=200\n";
             ..Default::default()
         };
 
-        let exact = super::count_top_gear_combos_with_talents(
+        let exact = super::count_top_gear_combos_with_variants(
             &base,
             &items_by_slot,
             &selected,
@@ -1799,7 +1885,7 @@ main_hand=,id=200\n";
             vec![uid(200001, &[], "bags", "main_hand")],
         );
 
-        let (input, _, _) = generate_top_gear_input_with_talents(
+        let (input, _, _) = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
@@ -1828,7 +1914,7 @@ main_hand=,id=200\n";
         let diamond_id = 213738_u64;
 
         let gems = [diamond_id];
-        let (input, count, _) = generate_top_gear_input_with_talents(
+        let (input, count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &HashMap::new(),
             &HashMap::new(),
@@ -1864,7 +1950,7 @@ neck=,id=101,bonus_id=13534\n";
         let socketed = HashSet::from([100_u64, 101_u64]);
 
         let gems = [213453_u64, 213454_u64];
-        let (_input, count, _) = generate_top_gear_input_with_talents(
+        let (_input, count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &HashMap::new(),
             &HashMap::new(),
@@ -1901,18 +1987,374 @@ head=,id=100\n";
         let subtlety_talents = "CUQAphyM11FofNMFa1K3vFEDUCgx2MAAAAAwsMGLTMbbjxMjZMMzMzYMbzYGbLzMzMzMjBjZ2GAAAAGMGwYWMMwAziWoFbYGwMDmxA";
         let talent_builds = vec![("Subtlety".to_string(), subtlety_talents.to_string())];
 
-        let (input, _, _) = generate_top_gear_input_with_talents(
+        let (input, _, _) = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
             Some(20),
-            &talent_builds,
+            &variants_from(&talent_builds, &[]),
             None,
             &GemEnchantOptions::default(),
         )
         .unwrap();
 
         assert!(input.contains(&format!("talents={}", subtlety_talents)));
+    }
+
+    #[test]
+    fn folio_variants_multiply_gear_combos() {
+        ensure_game_data_loaded();
+        // Exported folio sits on the base actor.
+        let base_profile = "mage=test
+spec=frost
+omnium_talents=136814:1
+head=,id=100
+";
+
+        let equipped = make_item("head", 100, true, ",id=100", vec![], 0, 0);
+        let alt = make_item("head", 200, false, ",id=200", vec![], 0, 0);
+        let mut items_by_slot = HashMap::new();
+        items_by_slot.insert("head".to_string(), vec![equipped, alt]);
+        let mut selected = HashMap::new();
+        selected.insert("head".to_string(), vec![uid(200, &[], "bags", "head")]);
+
+        let variants = vec![
+            // Variant 0 is the exported folio — the base actor already has it.
+            ProfileVariant {
+                omnium_string: "136814:1".to_string(),
+                ..Default::default()
+            },
+            ProfileVariant {
+                folio_name: "Residual Energy".to_string(),
+                omnium_string: "136824:1".to_string(),
+                ..Default::default()
+            },
+        ];
+
+        let (input, count, _) = generate_top_gear_input_with_variants(
+            base_profile,
+            &items_by_slot,
+            &selected,
+            Some(20),
+            &variants,
+            None,
+            &GemEnchantOptions::default(),
+        )
+        .unwrap();
+
+        // 2 gear × 2 folio = 4 positions, minus the base actor itself.
+        assert_eq!(count, 3, "each folio variant multiplies the gear combos");
+        assert_eq!(
+            input.matches("+=omnium_talents=136824:1").count(),
+            2,
+            "both gear sets get simmed with the second folio:
+{input}"
+        );
+        assert!(
+            !input.contains("+=omnium_talents=136814:1"),
+            "the exported folio needs no override — the base actor carries it:
+{input}"
+        );
+    }
+
+    #[test]
+    fn two_builds_sharing_a_talent_string_keep_their_badges() {
+        ensure_game_data_loaded();
+        // The variant axis counts distinct talent STRINGS to decide whether
+        // talents vary, so two differently-named builds that carry the same
+        // string (API-supplied duplicates, or builds that converge under
+        // normalization) used to lose their talent_build badge entirely.
+        let base_profile = "mage=test
+spec=frost
+head=,id=100
+";
+        let equipped = make_item("head", 100, true, ",id=100", vec![], 0, 0);
+        let alt = make_item("head", 200, false, ",id=200", vec![], 0, 0);
+        let mut items_by_slot = HashMap::new();
+        items_by_slot.insert("head".to_string(), vec![equipped, alt]);
+        let mut selected = HashMap::new();
+        selected.insert("head".to_string(), vec![uid(200, &[], "bags", "head")]);
+
+        let shared = "CUQAphyM11FofNMFa1K3vFEDUCgx2MAAAAAwsMGLTMbbjxMjZMMzMzYMbzYGbLzMzMzMjBjZ2GAAAAGMGwYWMMwAziWoFbYGwMDmxA";
+        let talent_builds = vec![
+            ("Raid".to_string(), shared.to_string()),
+            ("M+".to_string(), shared.to_string()),
+        ];
+
+        let (_, _, metadata) = generate_top_gear_input_with_variants(
+            base_profile,
+            &items_by_slot,
+            &selected,
+            Some(20),
+            &variants_from(&talent_builds, &[]),
+            None,
+            &GemEnchantOptions::default(),
+        )
+        .unwrap();
+
+        let tagged = metadata
+            .values()
+            .flatten()
+            .filter_map(|it| it.get("talent_build").and_then(|v| v.as_str()))
+            .collect::<std::collections::HashSet<_>>();
+        assert!(
+            tagged.contains("Raid") && tagged.contains("M+"),
+            "both builds must keep their badge, saw: {tagged:?}"
+        );
+    }
+
+    #[test]
+    fn every_row_of_a_folio_run_names_its_folio() {
+        ensure_game_data_loaded();
+        // A gem change on otherwise-equipped gear takes the one metadata path
+        // that builds its rows inline instead of through build_combo_metadata.
+        // That row must still say which folio it ran, or the results show a
+        // folio badge on some rows and not others.
+        let base_profile = "mage=test
+spec=frost
+omnium_talents=136814:1
+head=,id=100,gem_id=213453
+";
+
+        let socketed_item_ids = HashSet::from([100_u64]);
+        let gems = [213738_u64, 213453_u64];
+        let variants = variants_from(
+            &[],
+            &[
+                ("Overload".to_string(), "136814:1".to_string()),
+                ("Echoes".to_string(), "136826:1".to_string()),
+            ],
+        );
+
+        let (_, _, metadata) = generate_top_gear_input_with_variants(
+            base_profile,
+            &HashMap::new(),
+            &HashMap::new(),
+            Some(40),
+            &variants,
+            None,
+            &GemEnchantOptions {
+                gem_options: &gems,
+                socketed_item_ids: Some(&socketed_item_ids),
+                replace_gems: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let untagged: Vec<&String> = metadata
+            .iter()
+            .filter(|(_, items)| {
+                !items.is_empty()
+                    && !items
+                        .iter()
+                        .any(|it| it.get("folio_build").and_then(|v| v.as_str()).is_some())
+            })
+            .map(|(name, _)| name)
+            .collect();
+        assert!(
+            untagged.is_empty(),
+            "these rows carry no folio_build: {untagged:?}"
+        );
+    }
+
+    #[test]
+    fn a_folio_only_run_keeps_the_profile_talents() {
+        ensure_game_data_loaded();
+        // Regression: a folio-only run has variants whose talent_string is empty
+        // (the user varied runes, not talents). The base actor must still carry
+        // the profile's own talents — emitting none simulates a talentless actor,
+        // which scores nonsense and segfaults some specs outright.
+        let talents = "CwPAkXBWxkyfx9CbGaHonEAhLBYmZMjxYY2mZmZa2MzYmZMAAAAAAAAMzwMDAWmxMz2MzYmZ";
+        let base_profile = format!(
+            "deathknight=test
+spec=unholy
+talents={talents}
+             omnium_talents=136814:1
+head=,id=100
+"
+        );
+
+        let equipped = make_item("head", 100, true, ",id=100", vec![], 0, 0);
+        let alt = make_item("head", 200, false, ",id=200", vec![], 0, 0);
+        let mut items_by_slot = HashMap::new();
+        items_by_slot.insert("head".to_string(), vec![equipped, alt]);
+        let mut selected = HashMap::new();
+        selected.insert("head".to_string(), vec![uid(200, &[], "bags", "head")]);
+
+        let variants = variants_from(
+            &[],
+            &[
+                ("Overload".to_string(), "136814:1".to_string()),
+                ("Echoes".to_string(), "136826:1".to_string()),
+            ],
+        );
+
+        let (input, _, _) = generate_top_gear_input_with_variants(
+            &base_profile,
+            &items_by_slot,
+            &selected,
+            Some(20),
+            &variants,
+            None,
+            &GemEnchantOptions::default(),
+        )
+        .unwrap();
+
+        assert!(
+            input.lines().any(|l| l == format!("talents={talents}")),
+            "the base actor lost the profile's talents:
+{input}"
+        );
+    }
+
+    #[test]
+    fn a_reordered_folio_is_the_same_folio() {
+        ensure_game_data_loaded();
+        // The addon exports runes bottom row first; the picker builds them top
+        // row first. Same five runes either way — the baseline variant must not
+        // be re-simmed as if it were a different folio.
+        let base_profile = "mage=test
+spec=frost
+omnium_talents=136814:1/136818:1
+head=,id=100
+";
+
+        let equipped = make_item("head", 100, true, ",id=100", vec![], 0, 0);
+        let alt = make_item("head", 200, false, ",id=200", vec![], 0, 0);
+        let mut items_by_slot = HashMap::new();
+        items_by_slot.insert("head".to_string(), vec![equipped, alt]);
+        let mut selected = HashMap::new();
+        selected.insert("head".to_string(), vec![uid(200, &[], "bags", "head")]);
+
+        let variants = variants_from(
+            &[],
+            &[
+                // Reversed relative to the profile's line.
+                ("Overload".to_string(), "136818:1/136814:1".to_string()),
+                ("Echoes".to_string(), "136818:1/136826:1".to_string()),
+            ],
+        );
+
+        let (input, count, _) = generate_top_gear_input_with_variants(
+            base_profile,
+            &items_by_slot,
+            &selected,
+            Some(20),
+            &variants,
+            None,
+            &GemEnchantOptions::default(),
+        )
+        .unwrap();
+
+        // 2 gear × 2 folio = 4 positions, minus the base actor.
+        assert_eq!(
+            count, 3,
+            "the reordered baseline folio is not a fourth combo"
+        );
+        assert!(
+            !input.contains("+=omnium_talents=136818:1/136814:1"),
+            "a reordered baseline folio needs no override line:
+{input}"
+        );
+    }
+
+    #[test]
+    fn folio_variants_are_counted_without_generating() {
+        ensure_game_data_loaded();
+        let base_profile = "mage=test
+spec=frost
+omnium_talents=136814:1
+head=,id=100
+";
+
+        let equipped = make_item("head", 100, true, ",id=100", vec![], 0, 0);
+        let alt = make_item("head", 200, false, ",id=200", vec![], 0, 0);
+        let mut items_by_slot = HashMap::new();
+        items_by_slot.insert("head".to_string(), vec![equipped, alt]);
+        let mut selected = HashMap::new();
+        selected.insert("head".to_string(), vec![uid(200, &[], "bags", "head")]);
+
+        let variants = variants_from(
+            &[],
+            &[
+                ("".to_string(), "136814:1".to_string()),
+                ("Residual Energy".to_string(), "136824:1".to_string()),
+                ("Echoes".to_string(), "136826:1".to_string()),
+            ],
+        );
+
+        let counted = count_top_gear_combos_with_variants(
+            base_profile,
+            &items_by_slot,
+            &selected,
+            Some(20),
+            &variants,
+            None,
+            &GemEnchantOptions::default(),
+        )
+        .unwrap();
+        let (_, generated, _) = generate_top_gear_input_with_variants(
+            base_profile,
+            &items_by_slot,
+            &selected,
+            Some(20),
+            &variants,
+            None,
+            &GemEnchantOptions::default(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            counted, generated,
+            "the count path must agree with the generate path"
+        );
+    }
+
+    #[test]
+    fn variants_from_crosses_talents_with_folio() {
+        let talents = vec![
+            ("Raid".to_string(), "AAA".to_string()),
+            ("M+".to_string(), "BBB".to_string()),
+        ];
+        let folio = vec![
+            ("".to_string(), "136814:1".to_string()),
+            ("Echoes".to_string(), "136826:1".to_string()),
+        ];
+
+        let variants = variants_from(&talents, &folio);
+
+        assert_eq!(variants.len(), 4, "2 talent builds × 2 folios");
+        // Position 0 must stay the baseline pair: first talent build, exported folio.
+        assert_eq!(variants[0].talent_string, "AAA");
+        assert_eq!(variants[0].omnium_string, "136814:1");
+        assert_eq!(variants[0].name, "Raid");
+        // Each half keeps its own name, so results can label them separately.
+        assert_eq!(variants[1].name, "Raid");
+        assert_eq!(variants[1].folio_name, "Echoes");
+        assert_eq!(variants[1].omnium_string, "136826:1");
+    }
+
+    #[test]
+    fn variants_from_handles_one_axis_at_a_time() {
+        let talents = vec![("Raid".to_string(), "AAA".to_string())];
+        let folio = vec![("Echoes".to_string(), "136826:1".to_string())];
+
+        // Folio only: talent strings stay empty so no talents= override is emitted.
+        let folio_only = variants_from(&[], &folio);
+        assert_eq!(folio_only.len(), 1);
+        assert!(folio_only[0].talent_string.is_empty());
+        assert_eq!(folio_only[0].folio_name, "Echoes");
+
+        // Talents only: unchanged behaviour, no folio override.
+        let talents_only = variants_from(&talents, &[]);
+        assert_eq!(talents_only.len(), 1);
+        assert!(talents_only[0].omnium_string.is_empty());
+        assert!(talents_only[0].folio_name.is_empty());
+        assert_eq!(talents_only[0].name, "Raid");
+
+        // Neither: a single pass with nothing overridden.
+        assert!(variants_from(&[], &[]).is_empty());
     }
 
     #[test]
@@ -1933,7 +2375,7 @@ head=,id=100\n";
         selected.insert("head".to_string(), vec![uid(200, &[], "bags", "head")]);
         selected.insert("chest".to_string(), vec![uid(201, &[], "bags", "chest")]);
 
-        let (_, count, _) = generate_top_gear_input_with_talents(
+        let (_, count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
@@ -1956,7 +2398,7 @@ head=,id=100\n";
 
         let gems = [213453_u64, 213454_u64];
         let sockets = HashSet::from([100_u64]);
-        let (input, count, _) = generate_top_gear_input_with_talents(
+        let (input, count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &HashMap::new(),
             &HashMap::new(),
@@ -1982,7 +2424,7 @@ head=,id=100\n";
         ensure_game_data_loaded();
         let base_profile = "mage=test\nspec=frost\nhead=,id=100\n";
 
-        let (_, count, _) = generate_top_gear_input_with_talents(
+        let (_, count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &HashMap::new(),
             &HashMap::new(),
@@ -2004,12 +2446,12 @@ head=,id=100\n";
             ("B".to_string(), "BBBB".to_string()),
         ];
 
-        let (_, count, _) = generate_top_gear_input_with_talents(
+        let (_, count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &HashMap::new(),
             &HashMap::new(),
             Some(20),
-            &talents,
+            &variants_from(&talents, &[]),
             None,
             &GemEnchantOptions::default(),
         )
@@ -2040,7 +2482,7 @@ head=,id=100\n";
             vec![uid(999, &[], "bags", "finger1")],
         );
 
-        let (input, _count, _) = generate_top_gear_input_with_talents(
+        let (input, _count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
@@ -2074,7 +2516,7 @@ head=,id=100\n";
 
         let gems = [213453_u64, 213454_u64];
         let sockets = HashSet::from([100_u64]);
-        let (_, count, _) = generate_top_gear_input_with_talents(
+        let (_, count, _) = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
@@ -2202,8 +2644,14 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
             socketed_item_ids: Some(&socketed),
             ..Default::default()
         };
-        let (input, count, metadata) = generate_top_gear_input_with_talents(
-            &base, &items, &selected, None, &talents, None, &gem_opts,
+        let (input, count, metadata) = generate_top_gear_input_with_variants(
+            &base,
+            &items,
+            &selected,
+            None,
+            &variants_from(&talents, &[]),
+            None,
+            &gem_opts,
         )
         .unwrap();
 
@@ -2248,7 +2696,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
         let mut selected = HashMap::new();
         selected.insert("head".to_string(), vec![uid(300, &[], "bags", "head")]);
 
-        let (input, count, metadata) = generate_top_gear_input_with_talents(
+        let (input, count, metadata) = generate_top_gear_input_with_variants(
             base_profile,
             &items_by_slot,
             &selected,
@@ -2352,7 +2800,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
         items_a.insert("head".to_string(), vec![equipped_head_a.clone()]);
 
         // Eager path
-        let (input_a, count_a, _) = generate_top_gear_input_with_talents(
+        let (input_a, count_a, _) = generate_top_gear_input_with_variants(
             base_a,
             &items_a,
             &HashMap::new(),
@@ -2445,7 +2893,7 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
         }
 
         // Eager path for Scenario B: same check
-        let (input_b, _, _) = generate_top_gear_input_with_talents(
+        let (input_b, _, _) = generate_top_gear_input_with_variants(
             base_b,
             &items_b,
             &selected_b,
@@ -2478,14 +2926,27 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
             ..Default::default()
         };
 
-        let (input, eager_count, _) = generate_top_gear_input_with_talents(
-            &base, &items, &selected, None, &talents, None, &gem_opts,
+        let (input, eager_count, _) = generate_top_gear_input_with_variants(
+            &base,
+            &items,
+            &selected,
+            None,
+            &variants_from(&talents, &[]),
+            None,
+            &gem_opts,
         )
         .unwrap();
 
         let eager_bodies = strip_named_profileset_bodies(&input);
 
-        let cfg = super::build_iterator_config(&base, &items, &selected, &talents, &gem_opts, None);
+        let cfg = super::build_iterator_config(
+            &base,
+            &items,
+            &selected,
+            &super::variants_from(&talents, &[]),
+            &gem_opts,
+            None,
+        );
         let iter: Vec<_> = super::ProfilesetIterator::new(cfg).collect();
         let iter_bodies: std::collections::BTreeSet<String> = iter
             .iter()
@@ -2536,8 +2997,14 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
             socketed_item_ids: Some(&socketed),
             ..Default::default()
         };
-        let (eager_input, _, eager_meta) = generate_top_gear_input_with_talents(
-            &base, &items, &selected, None, &talents, None, &gem_opts,
+        let (eager_input, _, eager_meta) = generate_top_gear_input_with_variants(
+            &base,
+            &items,
+            &selected,
+            None,
+            &variants_from(&talents, &[]),
+            None,
+            &gem_opts,
         )
         .unwrap();
 
@@ -2556,7 +3023,14 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
             })
             .collect();
 
-        let cfg = super::build_iterator_config(&base, &items, &selected, &talents, &gem_opts, None);
+        let cfg = super::build_iterator_config(
+            &base,
+            &items,
+            &selected,
+            &super::variants_from(&talents, &[]),
+            &gem_opts,
+            None,
+        );
         let mut iter = super::ProfilesetIterator::new(cfg);
         iter.set_next_name_idx(2);
         let mut checked = 0;
@@ -2599,8 +3073,14 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
             socketed_item_ids: Some(&socketed),
             ..Default::default()
         };
-        let (input, count, meta) = generate_top_gear_input_with_talents(
-            &base, &items, &selected, None, &talents, None, &gem_opts,
+        let (input, count, meta) = generate_top_gear_input_with_variants(
+            &base,
+            &items,
+            &selected,
+            None,
+            &variants_from(&talents, &[]),
+            None,
+            &gem_opts,
         )
         .unwrap();
         // emitted profileset blocks = "### Combo " count minus the base actor (Combo 1)
@@ -2615,13 +3095,19 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
             count, profileset_meta,
             "count must match profileset metadata entries"
         );
-        let cnt = count_top_gear_combos_with_talents(
-            &base, &items, &selected, None, &talents, None, &gem_opts,
+        let cnt = count_top_gear_combos_with_variants(
+            &base,
+            &items,
+            &selected,
+            None,
+            &variants_from(&talents, &[]),
+            None,
+            &gem_opts,
         )
         .unwrap();
         assert_eq!(
             count, cnt,
-            "generate count must equal count_top_gear_combos_with_talents"
+            "generate count must equal count_top_gear_combos_with_variants"
         );
     }
 
@@ -2643,8 +3129,14 @@ finger1=,id=400\nfinger2=,id=401\nmain_hand=,id=200\n"
                 socketed_item_ids: Some(&socketed),
                 ..Default::default()
             };
-            let cfg =
-                super::build_iterator_config(&base, &items, &selected, &talents, &gem_opts, None);
+            let cfg = super::build_iterator_config(
+                &base,
+                &items,
+                &selected,
+                &super::variants_from(&talents, &[]),
+                &gem_opts,
+                None,
+            );
             let full = super::ProfilesetIterator::new(cfg.clone()).count();
             let fast = super::ProfilesetIterator::new(cfg).count_emitted();
             assert_eq!(

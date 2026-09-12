@@ -1,7 +1,9 @@
 import { useMemo } from 'react';
 import { useSimContext } from '../components/sim-config/SimContext';
+import { primaryOmniumOverride } from '../components/omnium/omniumSelection';
 import { decodeHeader } from './talentDecode';
 import { SPEC_ID_TO_NAME } from './types';
+import { useOmniumTree } from './useOmniumTree';
 
 /**
  * Single source of truth for SimContext-derived options shared by the real
@@ -14,6 +16,8 @@ import { SPEC_ID_TO_NAME } from './types';
  */
 export function useSharedSimPayload(): Record<string, unknown> {
   const {
+    simcInput,
+    folioSelections,
     threads,
     selectedTalent,
     targetError,
@@ -33,6 +37,14 @@ export function useSharedSimPayload(): Record<string, unknown> {
     triageMaxBatchProfilesets,
   } = useSimContext();
 
+  // The folio the user picked, sent only when it differs from the imported one
+  // so an untouched profile reaches SimC exactly as it did before.
+  const omniumTree = useOmniumTree();
+  const omniumOverride = useMemo(
+    () => (omniumTree ? primaryOmniumOverride(omniumTree, folioSelections, simcInput) : ''),
+    [omniumTree, folioSelections, simcInput]
+  );
+
   // Derive spec from talent string so the backend can override spec= in SimC input
   const specOverride = useMemo(() => {
     if (!selectedTalent) return '';
@@ -50,6 +62,7 @@ export function useSharedSimPayload(): Record<string, unknown> {
       target_error: targetError,
       threads,
       ...(selectedTalent ? { talents: selectedTalent } : {}),
+      ...(omniumOverride ? { omnium_talents: omniumOverride } : {}),
       ...(specOverride ? { spec_override: specOverride } : {}),
       ...(customApl ? { custom_apl: customApl } : {}),
       ...(rotationMode !== 'default' ? { rotation_mode: rotationMode } : {}),
@@ -85,6 +98,7 @@ export function useSharedSimPayload(): Record<string, unknown> {
     [
       threads,
       selectedTalent,
+      omniumOverride,
       targetError,
       iterations,
       customApl,

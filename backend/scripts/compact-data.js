@@ -56,6 +56,9 @@ const MANIFEST = {
   // Talent trees — keep as-is (keyed by specId)
   "talents.json": null,
 
+  // Omnium Folio trait tree — small file, keep as-is
+  "omnium-talents.json": null,
+
   // Catalyst item conversions — keep as-is
   "item-conversions.json": null,
 

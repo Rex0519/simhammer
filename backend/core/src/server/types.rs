@@ -29,6 +29,10 @@ pub struct SimOptions {
     pub threads: u32,
     #[serde(default)]
     pub talents: String,
+    /// Omnium Folio override: `<entryId>:<rank>` pairs, slash-separated. Empty
+    /// leaves the profile's exported `omnium_talents=` line alone.
+    #[serde(default)]
+    pub omnium_talents: String,
     #[serde(default)]
     pub spec_override: String,
     /// Custom APL and SimC expansion options (e.g., actions=..., midnight.*, use_blizzard_action_list).
@@ -149,6 +153,13 @@ pub struct TalentBuild {
     pub talent_string: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct OmniumBuild {
+    pub name: String,
+    /// `<entryId>:<rank>` pairs for `omnium_talents=`.
+    pub omnium_string: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct TopGearRequest {
     pub simc_input: String,
@@ -162,6 +173,11 @@ pub struct TopGearRequest {
     pub max_combinations: Option<usize>,
     #[serde(default)]
     pub talent_builds: Vec<TalentBuild>,
+    /// Folio combinations to multiply the gear combos by. One entry (or none)
+    /// means the folio doesn't vary — the primary folio rides `omnium_talents`
+    /// on `SimOptions` instead.
+    #[serde(default)]
+    pub omnium_builds: Vec<OmniumBuild>,
     #[serde(default)]
     pub catalyst: bool,
     #[serde(default)]

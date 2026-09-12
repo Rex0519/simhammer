@@ -350,6 +350,7 @@ pub(super) async fn get_upgrade_compare_combo_count(
         &req.simc_input,
         &req.options.talents,
         &req.options.spec_override,
+        &req.options.omnium_talents,
     );
 
     let prepared = match prepare_upgrade_compare(&simc_input, &req.selected_slots) {
@@ -387,6 +388,7 @@ pub(super) async fn create_upgrade_compare_sim(
         &req.simc_input,
         &req.options.talents,
         &req.options.spec_override,
+        &req.options.omnium_talents,
     );
 
     let prepared = match prepare_upgrade_compare(&simc_input, &req.selected_slots) {

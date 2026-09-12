@@ -6,11 +6,14 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
 import type { FightScenario } from '../../lib/types';
 import type { ActiveRoute } from '../../lib/active-route';
+import { folioSelectionForImport, type OmniumSelection } from '../omnium/omniumSelection';
+import { useOmniumTree } from '../../lib/useOmniumTree';
 import { API_URL } from '../../lib/api';
 import {
   readSessionJson,
@@ -120,6 +123,11 @@ interface SimContextType {
   // Multi-talent compare
   talentBuilds: { name: string; talentString: string }[];
   setTalentBuilds: (v: { name: string; talentString: string }[]) => void;
+  /** Omnium Folio picks, nodeId → entry ids. Seeded here from the import's
+   *  `omnium_talents=` line whenever `simcInput` changes; a row with several
+   *  picks multiplies the run. Empty means the import named no folio. */
+  folioSelections: OmniumSelection;
+  setFolioSelections: (v: OmniumSelection) => void;
   // Multi-sim scenarios
   scenarios: FightScenario[];
   addScenario: () => void;
@@ -195,6 +203,8 @@ export function SimProvider({ children }: { children: ReactNode }) {
   );
   const [simcBranch, _setSimcBranch] = useState(DEFAULT_PROFILE_DATA.simcBranch);
   const [talentBuilds, setTalentBuilds] = useState<{ name: string; talentString: string }[]>([]);
+  const [folioSelections, setFolioSelections] = useState<OmniumSelection>({});
+  const omniumTree = useOmniumTree();
   const [scenarios, setScenarios] = useState<FightScenario[]>(DEFAULT_PROFILE_DATA.scenarios);
   const [parallelProfilesets, setParallelProfilesets] = useState(
     DEFAULT_PROFILE_DATA.parallelProfilesets
@@ -608,6 +618,19 @@ export function SimProvider({ children }: { children: ReactNode }) {
     setActiveProfile(await updateProfile({ ...activeProfile, data: captureProfileData() }));
   }, [activeProfile, captureProfileData, setActiveProfile]);
 
+  // The folio belongs to the imported character, so it is seeded here rather
+  // than by any one page: `useSharedSimPayload` reads these picks on every sim
+  // page, and a screen-owned effect left the previous character's runes in place
+  // when the import changed elsewhere. The decision itself lives in
+  // `folioSelectionForImport` (unit-tested); this is just the plumbing.
+  const seededImportRef = useRef<string | null>(null);
+  useEffect(() => {
+    const next = folioSelectionForImport(omniumTree, simcInput, seededImportRef.current);
+    if (!next) return;
+    seededImportRef.current = simcInput;
+    setFolioSelections(next);
+  }, [omniumTree, simcInput]);
+
   // Persist the working config so a reload restores unsaved edits instead of
   // reverting them (which also cleared the dirty dot, hiding the loss). Debounced:
   // the expert text fields write to state on every keystroke, and this is the one
@@ -694,6 +717,8 @@ export function SimProvider({ children }: { children: ReactNode }) {
         setSimcBranch,
         talentBuilds,
         setTalentBuilds,
+        folioSelections,
+        setFolioSelections,
         scenarios,
         addScenario,
         removeScenario,

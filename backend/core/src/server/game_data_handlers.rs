@@ -304,6 +304,14 @@ pub(super) async fn modify_item(req: web::Json<super::types::ModifyItemRequest>)
     HttpResponse::Ok().json(modified)
 }
 
+pub(super) async fn get_omnium_tree() -> HttpResponse {
+    match game_data::omnium_tree() {
+        Some(tree) => HttpResponse::Ok().json(tree),
+        // No folio data for this season — the UI hides the section on a 404.
+        None => HttpResponse::NotFound().json(json!({"detail": "Omnium folio not found"})),
+    }
+}
+
 pub(super) async fn get_talent_tree(path: web::Path<u64>) -> HttpResponse {
     let spec_id = path.into_inner();
     let tree = match game_data::talent_tree(spec_id) {

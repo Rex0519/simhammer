@@ -96,6 +96,7 @@ static SEASON_CONFIG: OnceCell<Value> = OnceCell::new();
 /// they carry no track name or seasonId of their own.
 static FIXED_DIFFICULTY_BONUSES: OnceCell<HashSet<u64>> = OnceCell::new();
 static TALENT_TREES: OnceCell<HashMap<u64, Value>> = OnceCell::new();
+static OMNIUM_TREE: OnceCell<Value> = OnceCell::new();
 /// Localized item names: item_id → { locale → name }
 static ITEM_NAMES: OnceCell<HashMap<u64, HashMap<String, String>>> = OnceCell::new();
 /// Void Forge map: max-upgrade base bonus_id → voidforged bonus_id
@@ -691,6 +692,22 @@ pub fn load(data_dir: &Path) -> Result<(), String> {
         let _ = TALENT_TREES.set(map);
     }
 
+    // omnium-talents.json — the Omnium Folio trait tree (one tree, all specs).
+    let omnium_path = data_dir.join("omnium-talents.json");
+    if omnium_path.exists() {
+        let file = fs::File::open(&omnium_path)
+            .map_err(|e| format!("open {}: {}", omnium_path.display(), e))?;
+        let data: Value = serde_json::from_reader(std::io::BufReader::new(file))
+            .map_err(|e| format!("parse {}: {}", omnium_path.display(), e))?;
+        let rows = data
+            .get("nodes")
+            .and_then(|v| v.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+        println!("Loaded omnium folio ({} rows)", rows);
+        let _ = OMNIUM_TREE.set(data);
+    }
+
     // item-squish-era.json — squish era → curve ID mapping
     let squish_path = data_dir.join("item-squish-era.json");
     if squish_path.exists() {
@@ -1153,6 +1170,11 @@ pub fn all_crafted_items(items: &[Value]) -> bool {
 
 pub fn talent_tree(spec_id: u64) -> Option<&'static Value> {
     TALENT_TREES.get()?.get(&spec_id)
+}
+
+/// The Omnium Folio trait tree, or `None` when the season ships no folio data.
+pub fn omnium_tree() -> Option<&'static Value> {
+    OMNIUM_TREE.get()
 }
 
 /// Return all talent trees that share the same classId as the given specId.
@@ -2796,6 +2818,30 @@ mod tests {
         // An item with neither source stays at zero. Necks and rings that reach
         // this state get their socket from the per-slot floor the caller applies.
         assert_eq!(item_socket_count(268222, &[]), 0);
+    }
+
+    #[test]
+    fn omnium_tree_rows_carry_what_the_picker_needs() {
+        crate::test_support::ensure_game_data_loaded();
+        // A season without a folio is a supported state (the endpoint 404s and
+        // the UI hides the section), and the row count comes from fetched data,
+        // so neither is asserted — only the per-entry contract the picker relies on.
+        let Some(tree) = omnium_tree() else {
+            return;
+        };
+        let nodes = tree["nodes"].as_array().expect("nodes array");
+        assert!(!nodes.is_empty(), "a loaded folio has rows");
+        for node in nodes {
+            let entries = node["entries"].as_array().expect("entries array");
+            assert!(!entries.is_empty(), "every row offers at least one rune");
+            for entry in entries {
+                // `id` is the wire value for `omnium_talents=`; name and spellId
+                // are what the pill renders and links to.
+                assert!(entry["id"].as_u64().is_some_and(|id| id > 0));
+                assert!(!entry["name"].as_str().unwrap_or("").is_empty());
+                assert!(entry["spellId"].as_u64().is_some_and(|id| id > 0));
+            }
+        }
     }
 
     #[test]

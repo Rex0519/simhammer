@@ -12,7 +12,8 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\"",
     "test:loot": "node --test scripts/test-loot.cjs scripts/test-loot-interactions.cjs",
-    "test:topgear": "node --test scripts/test-topgear.cjs"
+    "test:topgear": "node --test scripts/test-topgear.cjs",
+    "test:omnium": "node --test scripts/test-omnium.cjs"
   },
   "dependencies": {
     "next": "^15.5.14",

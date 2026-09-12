@@ -69,6 +69,8 @@ pub fn build_iterator_from_request_json(json: &str) -> Result<ProfilesetIterator
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
+    // Jobs enveloped before the folio axis carry only `talent_builds`, so that
+    // shape stays readable for resume.
     let talent_builds: Vec<(String, String)> = payload
         .get("talent_builds")
         .and_then(|v| v.as_array())
@@ -100,6 +102,14 @@ pub fn build_iterator_from_request_json(json: &str) -> Result<ProfilesetIterator
         })
         .unwrap_or_default();
 
+    // The variant axis as written by streaming_top_gear.rs. A job enveloped
+    // before the folio axis existed has no "variants" key, so fall back to its
+    // talent builds and resume with the same axis it was planned with.
+    let variants: Vec<super::ProfileVariant> = payload
+        .get("variants")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_else(|| super::variants_from(&talent_builds, &[]));
+
     // Catalyst budget under "catalyst_charges" (written by streaming_top_gear.rs).
     // `None` is preserved so the resumed job is identical.
     let catalyst_charges: Option<u32> = payload
@@ -121,7 +131,7 @@ pub fn build_iterator_from_request_json(json: &str) -> Result<ProfilesetIterator
         &base_profile,
         &items_by_slot,
         &selected_items,
-        &talent_builds,
+        &variants,
         &gem_opts,
         catalyst_charges,
     ))

@@ -671,5 +671,10 @@
   "gear.collapseSource": "Hide the sims from {name}",
   "gear.summaryNote": "DPS compared to your current gear. Expected Value averages what each item a source drops is worth at its best; highlighted items are a 0.05% increase or better.",
   "loot.alreadyOwned": "Equipped",
-  "loot.alreadyOwnedReason": "You already have this item on the same upgrade track or better, so a drop of it could not improve on what you wear."
+  "loot.alreadyOwnedReason": "You already have this item on the same upgrade track or better, so a drop of it could not improve on what you wear.",
+  "topGear.sectionFolio": "Omnium Folio",
+  "omnium.row": "Row {number}",
+  "omnium.combinations": "{count} combination{s}",
+  "omnium.multiSelectHint": "Pick more than one rune in a row to sim them all.",
+  "omnium.sectionTooltip": "Your equipped folio is selected. Pick extra runes in a row to sim every combination of them alongside your gear."
 }

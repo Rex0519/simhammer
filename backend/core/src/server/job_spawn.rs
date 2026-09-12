@@ -238,6 +238,7 @@ pub(crate) fn validate_eager_branch(
 /// write metadata, spawn, return SimResponse (previously duplicated across four
 /// handlers). Streaming Top Gear bypasses this — its flow lives in
 /// `streaming_top_gear.rs` and is local-only by routing rule.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn submit_profileset_sim(
     submission: ProfilesetSubmission,
     options: &crate::server::types::SimOptions,
@@ -385,6 +386,7 @@ pub(crate) async fn spawn_droptimizer_child(
         simc_input,
         &options.talents,
         &options.spec_override,
+        &options.omnium_talents,
     );
     let parse_result = crate::addon_parser::parse_simc_input(&simc_input);
     let base_profile = parse_result.base_profile.clone();

@@ -12,6 +12,8 @@ pub struct IdentityInput<'a> {
     pub effective_enchants: &'a HashMap<String, u64>,
     pub effective_gems: &'a HashMap<String, Vec<u64>>,
     pub talent_string: &'a str,
+    /// `omnium_talents=` override, empty when the actor uses the base folio.
+    pub omnium_string: &'a str,
 }
 
 /// Compute a stable 32-char hex identity key for the candidate.
@@ -81,6 +83,21 @@ pub fn compute_identity_key(input: &IdentityInput) -> String {
     hasher.update(b"talents=");
     hasher.update(input.talent_string.as_bytes());
 
+    // Appended only when set, so keys for folio-less runs (and the resume
+    // checkpoints holding them) are byte-identical to before the folio axis.
+    // Runes are sorted first: the same folio listed in a different order is the
+    // same actor, exactly like the per-slot gem lists above.
+    if !input.omnium_string.is_empty() {
+        let mut runes: Vec<&str> = input
+            .omnium_string
+            .split('/')
+            .filter(|p| !p.is_empty())
+            .collect();
+        runes.sort_unstable();
+        hasher.update(b"\nomnium=");
+        hasher.update(runes.join("/").as_bytes());
+    }
+
     let digest = hasher.finalize();
     // 16 of 32 digest bytes = 32 hex chars; collision prob < 2^-64 per pair,
     // ample at billion-combo scale.
@@ -149,6 +166,7 @@ mod tests {
             effective_enchants: &enchants,
             effective_gems: &gems,
             talent_string: "BoG...",
+            omnium_string: "",
         };
 
         let k1 = compute_identity_key(&input);
@@ -171,6 +189,7 @@ mod tests {
             effective_enchants: &no_enchants,
             effective_gems: &no_gems,
             talent_string: "",
+            omnium_string: "",
         });
         let k2 = compute_identity_key(&IdentityInput {
             spec: "mistweaver",
@@ -178,6 +197,7 @@ mod tests {
             effective_enchants: &no_enchants,
             effective_gems: &no_gems,
             talent_string: "",
+            omnium_string: "",
         });
         assert_ne!(k1, k2);
     }
@@ -203,6 +223,7 @@ mod tests {
             effective_enchants: &no_enchants,
             effective_gems: &eff_a,
             talent_string: "",
+            omnium_string: "",
         });
         let k_b = compute_identity_key(&IdentityInput {
             spec: "mistweaver",
@@ -210,6 +231,7 @@ mod tests {
             effective_enchants: &no_enchants,
             effective_gems: &eff_b,
             talent_string: "",
+            omnium_string: "",
         });
         assert_eq!(
             k_a, k_b,
@@ -229,6 +251,7 @@ mod tests {
             effective_enchants: &no_enchants,
             effective_gems: &no_gems,
             talent_string: "BuildA",
+            omnium_string: "",
         });
         let k2 = compute_identity_key(&IdentityInput {
             spec: "mistweaver",
@@ -236,8 +259,56 @@ mod tests {
             effective_enchants: &no_enchants,
             effective_gems: &no_gems,
             talent_string: "BuildB",
+            omnium_string: "",
         });
         assert_ne!(k1, k2);
+    }
+
+    #[test]
+    fn different_folios_hash_to_different_keys() {
+        // Two profilesets with identical gear but different folio runes are
+        // different actors — dedup must not collapse them.
+        let gear: HashMap<String, Arc<Value>> = HashMap::new();
+        let no_enchants: HashMap<String, u64> = HashMap::new();
+        let no_gems: HashMap<String, Vec<u64>> = HashMap::new();
+
+        let k1 = compute_identity_key(&IdentityInput {
+            spec: "beast_mastery",
+            gear_set: &gear,
+            effective_enchants: &no_enchants,
+            effective_gems: &no_gems,
+            talent_string: "BuildA",
+            omnium_string: "136814:1",
+        });
+        let k2 = compute_identity_key(&IdentityInput {
+            spec: "beast_mastery",
+            gear_set: &gear,
+            effective_enchants: &no_enchants,
+            effective_gems: &no_gems,
+            talent_string: "BuildA",
+            omnium_string: "136824:1",
+        });
+        assert_ne!(k1, k2);
+    }
+
+    #[test]
+    fn folio_rune_orderings_hash_to_same_key() {
+        // Same runes listed in a different order are the same SimC actor, so
+        // dedup must collapse them — as it already does for multi-socket gems.
+        let gear: HashMap<String, Arc<Value>> = HashMap::new();
+        let no_enchants: HashMap<String, u64> = HashMap::new();
+        let no_gems: HashMap<String, Vec<u64>> = HashMap::new();
+        let key = |omnium: &str| {
+            compute_identity_key(&IdentityInput {
+                spec: "beast_mastery",
+                gear_set: &gear,
+                effective_enchants: &no_enchants,
+                effective_gems: &no_gems,
+                talent_string: "BuildA",
+                omnium_string: omnium,
+            })
+        };
+        assert_eq!(key("136814:1/136818:1"), key("136818:1/136814:1"));
     }
 
     #[test]
@@ -255,6 +326,7 @@ mod tests {
             effective_enchants: &no_enchants,
             effective_gems: &ab,
             talent_string: "",
+            omnium_string: "",
         });
         let k_ba = compute_identity_key(&IdentityInput {
             spec: "mistweaver",
@@ -262,6 +334,7 @@ mod tests {
             effective_enchants: &no_enchants,
             effective_gems: &ba,
             talent_string: "",
+            omnium_string: "",
         });
         assert_eq!(k_ab, k_ba);
     }

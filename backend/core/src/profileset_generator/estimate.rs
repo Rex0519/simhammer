@@ -10,18 +10,18 @@ pub fn estimate_top_gear_combo_count(
     enchant_selections: &HashMap<String, Vec<u64>>,
     gem_options: &[u64],
     socketed_item_ids: &HashSet<u64>,
-    talent_builds_count: usize,
+    variant_count: usize,
 ) -> u64 {
     let gear_axis = gear_axis_size(items_by_slot, selected_items);
     let enchant_axis = enchant_axis_size(enchant_selections);
     let gem_axis = gem_axis_size_upper_bound(gem_options, socketed_item_ids, items_by_slot);
-    let talents = talent_builds_count.max(1) as u64;
+    let variants = variant_count.max(1) as u64;
 
-    // Spec §1: total = gear × (enchant+1) × (gem+1) × talent
+    // Spec §1: total = gear × (enchant+1) × (gem+1) × variant
     gear_axis
         .saturating_mul(enchant_axis.saturating_add(1))
         .saturating_mul(gem_axis.saturating_add(1))
-        .saturating_mul(talents)
+        .saturating_mul(variants)
 }
 
 fn gear_axis_size(

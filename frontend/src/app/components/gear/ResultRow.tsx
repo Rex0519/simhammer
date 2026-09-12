@@ -151,18 +151,28 @@ export const ResultRow = memo(function ResultRow({
     (result.items.length === 0 || result.name.startsWith('Currently Equipped')) &&
     enchantGemItems.length === 0;
   const hasTalentBuild = !!result.talent_build;
+  const hasFolioBuild = !!result.folio_build;
   const changedSlots = new Set(changedItems.map((item) => item.slot));
   const showBothRings = changedSlots.has('finger1') || changedSlots.has('finger2');
   const showBothTrinkets = changedSlots.has('trinket1') || changedSlots.has('trinket2');
 
-  const talentBadge = hasTalentBuild ? (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded bg-purple-500/10 px-1.5 py-px text-[11px] font-medium">
-      {result.talent_spec && (
-        <span className="text-purple-300">{specDisplayName(result.talent_spec)}</span>
+  const talentBadge = (
+    <>
+      {hasTalentBuild && (
+        <span className="inline-flex shrink-0 items-center gap-1 rounded bg-purple-500/10 px-1.5 py-px text-[11px] font-medium">
+          {result.talent_spec && (
+            <span className="text-purple-300">{specDisplayName(result.talent_spec)}</span>
+          )}
+          <span className="text-purple-400/70">{result.talent_build}</span>
+        </span>
       )}
-      <span className="text-purple-400/70">{result.talent_build}</span>
-    </span>
-  ) : null;
+      {hasFolioBuild && (
+        <span className="inline-flex shrink-0 items-center rounded bg-sky-500/10 px-1.5 py-px text-[11px] font-medium text-sky-300/80">
+          {result.folio_build}
+        </span>
+      )}
+    </>
+  );
 
   const displayItems = result.items.filter((item) => {
     if (item.type) return false;
@@ -211,7 +221,7 @@ export const ResultRow = memo(function ResultRow({
               );
             }
 
-            if (!hasChangedItems && hasTalentBuild) {
+            if (!hasChangedItems && (hasTalentBuild || hasFolioBuild)) {
               return talentBadge;
             }
 

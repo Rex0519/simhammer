@@ -2,7 +2,7 @@
 //! Yields one [`ProfilesetCandidate`] at a time with O(axes) memory; the eager
 //! generator in `top_gear.rs` is untouched.
 //!
-//! Cursor axis layout: `[gear per varying slot][enchant per axis][gem combo][talent build]`.
+//! Cursor axis layout: `[gear per varying slot][enchant per axis][gem combo][profile variant]`.
 
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -75,8 +75,9 @@ pub struct ProfilesetIteratorConfig {
     pub gem_combos_resolver: GemCombosResolver,
     /// Item IDs known to carry a socket.
     pub socketed_item_ids: HashSet<u64>,
-    /// `(name, talent_string)` pairs. Empty → single pass with no talent override.
-    pub talent_builds: Vec<(String, String)>,
+    /// Profile-variant axis: talent builds crossed with folio combinations.
+    /// Empty → single pass with no profile-level override.
+    pub variants: Vec<super::ProfileVariant>,
     /// Catalyst budget for the gear-validator. `None` = request has no catalyst
     /// (mirrors the eager path's `GearSetContext`).
     pub max_catalyst_charges: Option<u32>,
@@ -92,9 +93,12 @@ struct Eval {
     effective_enchants_map: HashMap<String, u64>,
     gem_combo_idx: usize,
     eff_gems: super::gem_combos::GemCombo,
-    talent_idx: usize,
+    variant_idx: usize,
     talent_name: String,
     talent_string: String,
+    folio_name: String,
+    /// `omnium_talents=` value to override, empty when it matches the base actor.
+    omnium_override: String,
 }
 
 // ── Shared cursor helpers ─────────────────────────────────────────────────────
@@ -121,6 +125,13 @@ pub struct ProfilesetIterator {
     axis_sizes: Vec<usize>,
     done: bool,
     next_name_idx: usize,
+    /// The base actor's folio, so a variant that matches it emits no override.
+    base_omnium: String,
+    /// Whether each half of the variant axis actually varies. Computed once:
+    /// `build_candidate` runs per profileset, and a folio-only run must not tag
+    /// combos with a talent build the user never varied (or vice versa).
+    has_talent_variants: bool,
+    has_folio_variants: bool,
 }
 
 impl ProfilesetIterator {
@@ -141,12 +152,16 @@ impl ProfilesetIterator {
         // Gem axis (always 1 axis; size ≥ 1 so the loop fires even with no gem combos).
         axis_sizes.push(cfg.gem_combo_count.max(1));
 
-        // Talent axis.
-        axis_sizes.push(cfg.talent_builds.len().max(1));
+        // Profile-variant axis (talent build × folio combination).
+        axis_sizes.push(cfg.variants.len().max(1));
 
         let cursor = vec![0usize; axis_sizes.len()];
         // Terminate immediately if any axis has size 0 (can't enumerate).
         let done = axis_sizes.contains(&0);
+
+        let base_omnium = super::simc::extract_omnium_value(&cfg.base_profile);
+        let has_talent_variants = super::ProfileVariant::talents_vary(&cfg.variants);
+        let has_folio_variants = super::ProfileVariant::folios_vary(&cfg.variants);
 
         Self {
             cfg,
@@ -154,6 +169,9 @@ impl ProfilesetIterator {
             axis_sizes,
             done,
             next_name_idx: 1,
+            base_omnium,
+            has_talent_variants,
+            has_folio_variants,
         }
     }
 
@@ -311,23 +329,33 @@ impl ProfilesetIterator {
             return None;
         }
 
-        // ── 7. Resolve talent ────────────────────────────────────────────────
-        let talent_idx = cursor[cursor.len() - 1];
-        let (talent_name, talent_string) = self
+        // ── 7. Resolve profile variant (talent build × folio) ────────────────
+        let variant_idx = cursor[cursor.len() - 1];
+        let variant = self
             .cfg
-            .talent_builds
-            .get(talent_idx)
+            .variants
+            .get(variant_idx)
             .cloned()
-            .unwrap_or_else(|| ("".to_string(), "".to_string()));
+            .unwrap_or_default();
+        let (talent_name, talent_string) = (variant.name, variant.talent_string);
+        let folio_name = variant.folio_name;
+        // The base actor already carries the exported folio; only a different
+        // one needs an override line.
+        let omnium_override = if super::simc::same_folio(&variant.omnium_string, &self.base_omnium)
+        {
+            String::new()
+        } else {
+            variant.omnium_string
+        };
 
         // Skip combos that reproduce the baseline actor byte-for-byte. Baseline =
         // all-equipped gear, no overrides. A gem-only combo whose effective gems
         // EQUAL the already-socketed gems is also baseline-identical (set_gem_ids
         // is a no-op, e.g. replace_gems re-picked the equipped gem). Enchant
         // overrides always differ (axis index 0 emits no override), so a non-empty
-        // enchant map always changes something. talent_idx==0 with no other delta
+        // enchant map always changes something. variant_idx==0 with no other delta
         // duplicates the separately-emitted base actor (eager "### Combo 1" / the
-        // streaming base_profile's first talent); talent_idx>0 is never baseline.
+        // streaming base_profile's first variant); variant_idx>0 is never baseline.
         let gems_match_equipped = eff_gems.iter().all(|(slot, gids)| {
             let equipped_gems = gear_set
                 .get(slot)
@@ -344,7 +372,8 @@ impl ProfilesetIterator {
         if is_baseline
             && effective_enchants_map.is_empty()
             && gems_match_equipped
-            && (talent_string.is_empty() || talent_idx == 0)
+            && (talent_string.is_empty() || variant_idx == 0)
+            && omnium_override.is_empty()
         {
             return None;
         }
@@ -355,9 +384,11 @@ impl ProfilesetIterator {
             effective_enchants_map,
             gem_combo_idx,
             eff_gems,
-            talent_idx,
+            variant_idx,
             talent_name,
             talent_string,
+            folio_name,
+            omnium_override,
         })
     }
 
@@ -368,9 +399,11 @@ impl ProfilesetIterator {
             effective_enchants_map,
             gem_combo_idx,
             eff_gems,
-            talent_idx,
+            variant_idx,
             talent_name,
             talent_string,
+            folio_name,
+            omnium_override,
         } = self.evaluate(&self.cursor)?;
 
         // ── 8. Identity key ──────────────────────────────────────────────────
@@ -380,6 +413,7 @@ impl ProfilesetIterator {
             effective_enchants: &effective_enchants_map,
             effective_gems: &eff_gems,
             talent_string: &talent_string,
+            omnium_string: &omnium_override,
         });
 
         // ── 9. Format simc lines + build metadata ───────────────────────────
@@ -431,11 +465,17 @@ impl ProfilesetIterator {
             &talent_string,
             talent_spec_name,
             &self.cfg.spec,
+            &omnium_override,
         )
         .join("\n");
 
-        // ── Talent tagging ───────────────────────────────────────────────────
-        let has_talent_variants = self.cfg.talent_builds.len() > 1;
+        // ── Variant tagging ──────────────────────────────────────────────────
+        let has_talent_variants = self.has_talent_variants;
+        let folio_info: Option<&str> = if self.has_folio_variants {
+            Some(folio_name.as_str())
+        } else {
+            None
+        };
         // talent_spec_name was already derived above for profileset_simc; reuse it.
         let talent_info: Option<(&str, Option<&str>)> = if has_talent_variants {
             Some((talent_name.as_str(), talent_spec_name))
@@ -499,16 +539,24 @@ impl ProfilesetIterator {
             };
 
         // Replicate the eager's four metadata paths exactly:
-        //   A gem-only baseline (talent_idx==0, no enchants): gem entries (socket-filtered), no off_hand synthetic.
-        //   B enchant(+gem) baseline (talent_idx==0): enchant + socket-filtered gem entries + talent tags inline, no off_hand synthetic.
-        //   C is_baseline + talent_idx>0: build_combo_metadata, paired slots is_kept=true, + enchant/gem/talent + off_hand synthetic.
+        //   A gem-only baseline (variant_idx==0, no enchants): gem entries (socket-filtered), no off_hand synthetic.
+        //   B enchant(+gem) baseline (variant_idx==0): enchant + socket-filtered gem entries + talent tags inline, no off_hand synthetic.
+        //   C is_baseline + variant_idx>0: build_combo_metadata, paired slots is_kept=true, + enchant/gem/talent + off_hand synthetic.
         //   D gear swap (!is_baseline): build_combo_metadata, paired + non-paired swapped items + enchant/gem/talent + off_hand synthetic.
         let include_off_hand_synthetic = !gear_set.contains_key("off_hand");
 
-        let meta_items: Vec<serde_json::Value> = if is_baseline && talent_idx == 0 {
+        let meta_items: Vec<serde_json::Value> = if is_baseline && variant_idx == 0 {
             if effective_enchants_map.is_empty() {
-                // Case A: gem-only baseline.
-                gem_entries_simc_filtered(&HashMap::new())
+                // Case A: gem-only baseline. Tagged like every other path, or a
+                // gem change on equipped gear is the one row in a folio run that
+                // can't say which folio produced it.
+                let mut items = gem_entries_simc_filtered(&HashMap::new());
+                if let Some(folio) = folio_info {
+                    for item in &mut items {
+                        item["folio_build"] = serde_json::json!(folio);
+                    }
+                }
+                items
             } else {
                 // Case B: enchant(+gem) baseline — enchant entries then socket-filtered gems.
                 let mut items: Vec<serde_json::Value> = effective_enchants_map
@@ -522,14 +570,19 @@ impl ProfilesetIterator {
                         item["talent_spec"] = serde_json::json!(ts);
                     }
                 }
+                if let Some(folio) = folio_info {
+                    for item in &mut items {
+                        item["folio_build"] = serde_json::json!(folio);
+                    }
+                }
                 // No off_hand synthetic here (eager builds inline, not via build_combo_metadata).
                 items
             }
         } else {
-            // Case C (is_baseline, talent_idx>0) or Case D (!is_baseline).
+            // Case C (is_baseline, variant_idx>0) or Case D (!is_baseline).
             // gear_item_rows in eager order.
             let gear_item_rows: Vec<(String, bool, &Value)> = if is_baseline {
-                // Case C: is_equipped_with_new_talent — paired slots only, is_kept=true.
+                // Case C: is_equipped_with_new_variant — paired slots only, is_kept=true.
                 paired_display_slots
                     .iter()
                     .filter_map(|slot| {
@@ -640,6 +693,7 @@ impl ProfilesetIterator {
                 &enchant_entries,
                 &gem_entries,
                 talent_info,
+                folio_info,
                 include_off_hand_synthetic,
             )
         };
@@ -713,7 +767,7 @@ mod tests {
             gem_combo_count: 0,
             gem_combos_resolver: GemCombosResolver::new(vec![]),
             socketed_item_ids: HashSet::new(),
-            talent_builds: vec![],
+            variants: vec![],
             max_catalyst_charges: None,
         }
     }
@@ -729,7 +783,7 @@ mod tests {
             gem_combo_count: 0,
             gem_combos_resolver: GemCombosResolver::new(vec![]),
             socketed_item_ids: HashSet::new(),
-            talent_builds: vec![],
+            variants: vec![],
             max_catalyst_charges: None,
         };
         let iter = ProfilesetIterator::new(cfg);
@@ -766,7 +820,7 @@ mod tests {
             gem_combo_count: 1,
             gem_combos_resolver: GemCombosResolver::new(vec![gem_combo]),
             socketed_item_ids,
-            talent_builds: vec![],
+            variants: vec![],
             max_catalyst_charges: None,
         };
 
@@ -816,7 +870,7 @@ mod tests {
             gem_combo_count: 1,
             gem_combos_resolver: GemCombosResolver::new(vec![gem_combo]),
             socketed_item_ids,
-            talent_builds: vec![],
+            variants: vec![],
             max_catalyst_charges: None,
         };
         ProfilesetIterator::new(cfg).collect()
@@ -877,7 +931,7 @@ mod tests {
             gem_combo_count: 1,
             gem_combos_resolver: GemCombosResolver::new(vec![gem_combo]),
             socketed_item_ids,
-            talent_builds: vec![],
+            variants: vec![],
             max_catalyst_charges: None,
         };
 
@@ -998,7 +1052,7 @@ mod tests {
                 gem_combo_count: 0,
                 gem_combos_resolver: GemCombosResolver::new(vec![]),
                 socketed_item_ids: HashSet::new(),
-                talent_builds: vec![],
+                variants: vec![],
                 max_catalyst_charges: budget,
             }
         };
