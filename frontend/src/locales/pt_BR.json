@@ -250,7 +250,6 @@
   "page.crestUpgradesDesc": "Melhor caminho de Brasão da Aurora",
   "page.history": "Histórico",
   "page.historyDesc": "Veja resultados de simulações recentes.",
-  "nav.advanced": "AVANÇADO",
   "advanced.title": "Entrada SimC bruta",
   "advanced.description": "Cole ou escreva entrada SimulationCraft bruta. Será enviada diretamente ao SimC sem nenhum processamento.",
   "advanced.placeholder": "Cole sua entrada SimC bruta aqui...\n\nExemplo:\nwarrior=\"Guerreiro\"\nlevel=80\nrace=human\nspec=fury\n...",

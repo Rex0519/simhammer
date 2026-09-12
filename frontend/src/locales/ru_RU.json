@@ -250,7 +250,6 @@
   "page.crestUpgradesDesc": "Лучший путь Герба Рассвета",
   "page.history": "История",
   "page.historyDesc": "Просмотр результатов последних симуляций.",
-  "nav.advanced": "РАСШИРЕННЫЙ",
   "advanced.title": "Прямой ввод SimC",
   "advanced.description": "Вставьте или напишите прямой ввод SimulationCraft. Он будет отправлен напрямую в SimC без обработки.",
   "advanced.placeholder": "Вставьте ваш прямой ввод SimC здесь...\n\nПример:\nwarrior=\"Воин\"\nlevel=80\nrace=human\nspec=fury\n...",

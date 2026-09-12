@@ -9,6 +9,7 @@
     "start": "next start",
     "generate:realms": "node scripts/generate-realms.mjs",
     "lint": "eslint src/",
+    "check:locales": "node scripts/check-locales.cjs",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\"",
     "test:loot": "node --test scripts/test-loot.cjs scripts/test-loot-interactions.cjs",

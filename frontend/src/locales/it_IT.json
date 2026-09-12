@@ -250,7 +250,6 @@
   "page.crestUpgradesDesc": "Miglior percorso Stemma dell'Alba",
   "page.history": "Cronologia",
   "page.historyDesc": "Visualizza i risultati delle simulazioni recenti.",
-  "nav.advanced": "AVANZATO",
   "advanced.title": "Input SimC grezzo",
   "advanced.description": "Incolla o scrivi input SimulationCraft grezzo. Verrà inviato direttamente a SimC senza alcuna elaborazione.",
   "advanced.placeholder": "Incolla il tuo input SimC grezzo qui...\n\nEsempio:\nwarrior=\"Guerriero\"\nlevel=80\nrace=human\nspec=fury\n...",
