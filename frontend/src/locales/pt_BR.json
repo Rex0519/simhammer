@@ -659,7 +659,7 @@
   "dropFinder.sourceFilter": "Filtro de fontes",
   "dropFinder.sourceFilterDesc": "Desligue os chefes que você sabe não terem nada para você: o loot deles sai da execução, o que encurta a sim.",
   "dropFinder.fullPrecision": "Precisão total",
-  "dropFinder.fullPrecisionTooltip": "Simula cada item com o erro alvo que você escolheu. Desligado, faz primeiro uma passagem aproximada e refina apenas os melhores, então o restante mantém uma estimativa grosseira que pode variar algumas centenas de DPS. Na nuvem, uma seleção grande pode exceder o limite de tempo do provedor: reduza a seleção ou desligue isto se uma execução for rejeitada.",
+  "dropFinder.fullPrecisionTooltip": "Bem mais lento: simula cada item com seu erro alvo. Desligado, apenas os melhores são refinados e o resto fica aproximado.",
   "gear.sourceSummary": "Resumo das fontes",
   "gear.expectedValue": "Valor esperado",
   "gear.bestValue": "Melhor",

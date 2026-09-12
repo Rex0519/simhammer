@@ -659,7 +659,7 @@
   "dropFinder.sourceFilter": "Filtre de source",
   "dropFinder.sourceFilterDesc": "Désactivez les boss dont vous savez qu'ils n'ont rien pour vous — leur butin quitte le lancement, ce qui raccourcit la sim.",
   "dropFinder.fullPrecision": "Précision totale",
-  "dropFinder.fullPrecisionTooltip": "Simule chaque butin jusqu'à l'erreur cible que vous avez choisie. Désactivé, une passe grossière est effectuée d'abord et seuls les meilleurs sont affinés : les autres conservent une estimation approximative pouvant s'écarter de quelques centaines de DPS. Sur le cloud, une sélection trop large peut dépasser la limite de temps du fournisseur — réduisez la sélection ou désactivez ceci si un lancement est refusé.",
+  "dropFinder.fullPrecisionTooltip": "Beaucoup plus lent : simule chaque butin à votre erreur cible. Désactivé, seuls les meilleurs sont affinés, le reste reste approximatif.",
   "gear.sourceSummary": "Résumé des sources",
   "gear.expectedValue": "Valeur attendue",
   "gear.bestValue": "Meilleur",

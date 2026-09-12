@@ -659,7 +659,7 @@
   "dropFinder.sourceFilter": "Filtro de fuentes",
   "dropFinder.sourceFilterDesc": "Desactiva los jefes que sabes que no tienen nada para ti: su botín sale de la ejecución, lo que acorta la sim.",
   "dropFinder.fullPrecision": "Precisión total",
-  "dropFinder.fullPrecisionTooltip": "Simula cada botín con el error objetivo que hayas elegido. Desactivado, primero se hace una pasada aproximada y solo se refinan los mejores, así que el resto conserva una estimación tosca que puede desviarse unos cientos de DPS. En la nube, una selección grande puede superar el límite de tiempo del proveedor: reduce la selección o desactiva esto si se rechaza una ejecución.",
+  "dropFinder.fullPrecisionTooltip": "Mucho más lento: simula cada botín con tu error objetivo. Desactivado, solo se refinan los mejores y el resto queda aproximado.",
   "gear.sourceSummary": "Resumen de fuentes",
   "gear.expectedValue": "Valor esperado",
   "gear.bestValue": "Mejor",

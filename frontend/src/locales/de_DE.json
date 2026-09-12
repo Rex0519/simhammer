@@ -659,7 +659,7 @@
   "dropFinder.sourceFilter": "Quellenfilter",
   "dropFinder.sourceFilterDesc": "Schalte Bosse ab, von denen du weißt, dass sie nichts für dich haben – ihre Drops verlassen den Lauf, was die Sim verkürzt.",
   "dropFinder.fullPrecision": "Volle Präzision",
-  "dropFinder.fullPrecisionTooltip": "Simuliert jeden Drop mit dem von dir gewählten Zielfehler. Ausgeschaltet läuft zuerst ein grober Durchgang und nur die besten werden verfeinert, sodass der Rest eine grobe Schätzung behält, die einige Hundert DPS abweichen kann. Bei Cloud-Läufen kann eine große Auswahl das Laufzeitlimit des Anbieters überschreiten – verkleinere die Auswahl oder schalte dies aus, wenn ein Lauf abgelehnt wird.",
+  "dropFinder.fullPrecisionTooltip": "Deutlich langsamer: simuliert jeden Drop mit deinem Zielfehler. Aus wird nur die Spitze verfeinert, der Rest bleibt eine grobe Schätzung.",
   "gear.sourceSummary": "Quellenübersicht",
   "gear.expectedValue": "Erwartungswert",
   "gear.bestValue": "Beste",

@@ -659,7 +659,7 @@
   "dropFinder.sourceFilter": "Filtro fonti",
   "dropFinder.sourceFilterDesc": "Disattiva i boss che sai non avere nulla per te: il loro bottino esce dall'esecuzione, il che accorcia la sim.",
   "dropFinder.fullPrecision": "Precisione totale",
-  "dropFinder.fullPrecisionTooltip": "Simula ogni bottino con l'errore target che hai scelto. Disattivato, esegue prima una passata grossolana e affina solo i migliori, così il resto mantiene una stima approssimativa che può scostarsi di qualche centinaio di DPS. Nel cloud una selezione ampia può superare il limite di tempo del provider: riduci la selezione o disattiva questa opzione se un'esecuzione viene rifiutata.",
+  "dropFinder.fullPrecisionTooltip": "Molto più lento: simula ogni bottino con il tuo errore target. Disattivato, solo i migliori vengono affinati e il resto resta approssimativo.",
   "gear.sourceSummary": "Riepilogo fonti",
   "gear.expectedValue": "Valore atteso",
   "gear.bestValue": "Migliore",

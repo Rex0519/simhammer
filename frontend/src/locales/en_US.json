@@ -659,7 +659,7 @@
   "dropFinder.sourceFilter": "Source Filter",
   "dropFinder.sourceFilterDesc": "Switch off bosses you know have nothing for you — their drops leave the run, which shortens the sim.",
   "dropFinder.fullPrecision": "Full Precision",
-  "dropFinder.fullPrecisionTooltip": "Sim every drop to the target error you selected. Off runs a coarse pass first and only refines the top few, so the rest keep a rough estimate that can be a few hundred DPS out. On cloud runs a large selection can exceed the provider's runtime limit — trim the selection or turn this off if a run is rejected.",
+  "dropFinder.fullPrecisionTooltip": "Much slower: sims every drop to your target error. Off refines only the top few and leaves the rest as rough estimates.",
   "gear.sourceSummary": "Source Summary",
   "gear.expectedValue": "Expected Value",
   "gear.bestValue": "Best",
