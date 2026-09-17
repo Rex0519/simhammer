@@ -61,6 +61,8 @@ export interface DropItem {
   effect_bonus_ids?: number[];
   /** Per-item embellishment pick (canonical reagent id); absent = None. */
   embellishment_id?: number;
+  /** Game data leaves the sim nothing to value (no stats, no on-use), so it sims at zero. */
+  no_sim_value?: boolean;
 }
 
 /**

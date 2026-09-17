@@ -56,6 +56,8 @@ static DROPS_BY_ENCOUNTER: OnceCell<HashMap<i64, Vec<Value>>> = OnceCell::new();
 /// Raid encounter IDs a bonus roll can be spent on (from bonus-roll-sources).
 /// Raid trash has no bonus roll, so it never appears here.
 static BONUS_ROLL_RAID_ENCOUNTERS: OnceCell<HashSet<i64>> = OnceCell::new();
+/// Drops the game data gives no stat block at all.
+static STATLESS_DROPS: OnceCell<HashSet<u64>> = OnceCell::new();
 /// Base gem-socket count per item_id (from encounter-items `socketInfo`).
 static BASE_SOCKETS_BY_ITEM: OnceCell<HashMap<u64, u64>> = OnceCell::new();
 /// Item's own `bonusLists` per item_id (from encounter-items).
@@ -422,6 +424,7 @@ pub fn load(data_dir: &Path) -> Result<(), String> {
     let mut base_sockets: HashMap<u64, u64> = HashMap::new();
     let mut inherent_bonuses: HashMap<u64, Vec<u64>> = HashMap::new();
     let mut flexible_stat_items: HashSet<u64> = HashSet::new();
+    let mut statless_drops: HashSet<u64> = HashSet::new();
     let mut token_targets: HashMap<(u64, u64), Value> = HashMap::new();
     if encounter_items_path.exists() {
         let data: Vec<Value> = read_json_vec(&encounter_items_path)?;
@@ -444,6 +447,21 @@ pub fn load(data_dir: &Path) -> Result<(), String> {
                     })
                 {
                     flexible_stat_items.insert(id);
+                }
+                // Only equippable gear counts. A tier token carries no stats
+                // of its own because its worth is the piece it grants, and it
+                // has no inventory type at all.
+                if item.get("contains").is_none()
+                    && item
+                        .get("inventoryType")
+                        .and_then(|v| v.as_u64())
+                        .is_some_and(|t| t > 0)
+                    && item
+                        .get("stats")
+                        .and_then(|v| v.as_array())
+                        .is_none_or(|a| a.is_empty())
+                {
+                    statless_drops.insert(id);
                 }
             }
             if let (Some(id), Some(n)) = (
@@ -510,6 +528,7 @@ pub fn load(data_dir: &Path) -> Result<(), String> {
     let _ = INHERENT_BONUSES_BY_ITEM.set(inherent_bonuses);
     let _ = TIER_TOKEN_TARGETS.set(token_targets);
     let _ = FLEXIBLE_STAT_ITEMS.set(flexible_stat_items);
+    let _ = STATLESS_DROPS.set(statless_drops);
 
     // item-socket-overrides.json — our own committed file (crate-root fallback,
     // like season-config.json below): curated item_id → true socket count for
@@ -1460,6 +1479,19 @@ pub fn is_on_use_trinket(item_id: u64) -> bool {
         .and_then(|item| item.get("onUseTrinket"))
         .and_then(|v| v.as_bool())
         .unwrap_or(false)
+}
+
+/// Whether the game data leaves the sim nothing to value: no stat block and no
+/// on-use effect. SimC still equips such an item, but returns a zero delta and
+/// omits it from its gear report entirely (`gear_to_json` skips anything whose
+/// `has_stats()` is false), so the slot renders empty. Read from encounter-items
+/// because compaction strips `stats` from equippable-items-full — which is also
+/// the right scope: a boss drop is how these are obtained.
+pub fn has_no_sim_value(item_id: u64) -> bool {
+    STATLESS_DROPS
+        .get()
+        .is_some_and(|set| set.contains(&item_id))
+        && !is_on_use_trinket(item_id)
 }
 
 pub(crate) fn get_raw_item(item_id: u64) -> Option<&'static Value> {
@@ -2739,6 +2771,24 @@ mod tests {
             .and_then(|b| b.as_array())
             .map(|a| a.iter().filter_map(|v| v.as_u64()).collect())
             .unwrap_or_default()
+    }
+
+    /// SimC equips a stat-less item but values it at exactly an empty slot, and
+    /// leaves it out of its gear report, so the tile renders empty. Measured on
+    /// the 09-12 nightly: 250224 and 250244 come back bit-identical to no
+    /// trinket at all, while 250215 is worth +7.4 DPS.
+    #[test]
+    fn only_statless_equippable_drops_have_no_sim_value() {
+        crate::test_support::ensure_game_data_loaded();
+        assert!(has_no_sim_value(250224), "Mindpiercer's Sigil");
+        assert!(has_no_sim_value(250244), "Permafrost Essence");
+        // Same slot and item level, but it has a stat block.
+        assert!(!has_no_sim_value(250215), "Freightrunner's Flask");
+        // A tier token carries no stats of its own: its worth is the piece it
+        // grants, so it must never be flagged.
+        assert!(!has_no_sim_value(270910), "Venomwoven Idol");
+        // Claim nothing for an item we hold no drop data for.
+        assert!(!has_no_sim_value(0));
     }
 
     #[test]

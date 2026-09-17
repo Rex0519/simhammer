@@ -10,6 +10,7 @@ export default function VariantBadges({
     is_catalyst?: boolean;
     owned?: boolean;
     from_tier_token?: boolean;
+    no_sim_value?: boolean;
   };
 }) {
   const { t } = useLanguage();
@@ -28,6 +29,14 @@ export default function VariantBadges({
       {item.is_catalyst && (
         <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-sky-300">
           {t('loot.catalyst')}
+        </span>
+      )}
+      {item.no_sim_value && (
+        <span
+          title={t('gear.noSimValueReason')}
+          className="rounded bg-rose-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-rose-300"
+        >
+          {t('gear.noSimValue')}
         </span>
       )}
       {item.from_tier_token && (

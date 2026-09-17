@@ -204,6 +204,9 @@ pub struct ResolvedItem {
     /// Whether this item can be converted via Void Forge.
     #[serde(skip_serializing_if = "std::ops::Not::not", default)]
     pub can_void_forge: bool,
+    /// Whether the game data leaves the sim nothing to value, so it sims at zero.
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub no_sim_value: bool,
 }
 
 fn is_zero(v: &u64) -> bool {

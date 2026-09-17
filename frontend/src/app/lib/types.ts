@@ -32,6 +32,8 @@ export interface ResolvedItem {
   can_catalyst?: boolean;
   is_void_forge?: boolean;
   can_void_forge?: boolean;
+  /** Game data leaves the sim nothing to value (no stats, no on-use), so it sims at zero. */
+  no_sim_value?: boolean;
   is_manual?: boolean;
   embellishment?: { id: number; name: string; bonus_ids: number[] };
 }
