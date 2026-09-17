@@ -800,6 +800,30 @@ pub fn class_wow_id(class_name: &str) -> Option<u64> {
         .map(|(_, id)| *id)
 }
 
+// ---- SimC Spec Support ----
+
+/// Specs the SimC engine rejects at init ("... is not currently supported"),
+/// leaving the sim with no actor. Verified by running each spec through the
+/// shipped binary — not derived from role: SimC sims Restoration Druid and
+/// Restoration Shaman as DPS actors, so they are deliberately absent.
+const UNSIMMABLE_SPECS: &[(&str, &str)] = &[
+    ("paladin", "holy"),
+    ("priest", "discipline"),
+    ("priest", "holy"),
+    ("monk", "mistweaver"),
+    ("evoker", "preservation"),
+];
+
+/// Whether SimC can produce a result for this class/spec pair. Unknown pairs are
+/// simmable: the gate rejects only what SimC is known to reject.
+pub fn spec_is_simmable(class_name: &str, spec: &str) -> bool {
+    let class_lower = class_name.to_lowercase();
+    let spec_lower = spec.to_lowercase();
+    !UNSIMMABLE_SPECS
+        .iter()
+        .any(|(c, s)| *c == class_lower && *s == spec_lower)
+}
+
 // ---- Detection ----
 
 /// Detect the character class from a simc input string.
@@ -1193,5 +1217,48 @@ mod tests {
             !p.weapon_subclasses.contains(&10),
             "Enh should NOT allow Staff (10)"
         );
+    }
+
+    #[test]
+    fn simc_rejected_specs_are_not_simmable() {
+        // Verified against the shipped nightly: each errors at init with
+        // "... is not currently supported" and produces no actor.
+        assert!(!spec_is_simmable("paladin", "holy"));
+        assert!(!spec_is_simmable("priest", "discipline"));
+        assert!(!spec_is_simmable("priest", "holy"));
+        assert!(!spec_is_simmable("monk", "mistweaver"));
+        assert!(!spec_is_simmable("evoker", "preservation"));
+    }
+
+    #[test]
+    fn restoration_specs_are_simmable() {
+        // SimC sims both as DPS actors — they must not be swept up by a
+        // blanket "healers are unsupported" rule.
+        assert!(spec_is_simmable("druid", "restoration"));
+        assert!(spec_is_simmable("shaman", "restoration"));
+    }
+
+    #[test]
+    fn simmable_is_scoped_per_class() {
+        // "holy" is unsimmable for paladin and priest, but every class's other
+        // specs of the same name must stay simmable.
+        assert!(spec_is_simmable("paladin", "retribution"));
+        assert!(spec_is_simmable("priest", "shadow"));
+        assert!(spec_is_simmable("monk", "windwalker"));
+        assert!(spec_is_simmable("evoker", "augmentation"));
+    }
+
+    #[test]
+    fn simmable_ignores_case_and_deathknight_alias() {
+        assert!(!spec_is_simmable("Paladin", "Holy"));
+        assert!(spec_is_simmable("deathknight", "blood"));
+    }
+
+    #[test]
+    fn unknown_specs_are_treated_as_simmable() {
+        // A spec this build has never heard of must not be blocked — the gate
+        // only rejects what SimC is known to reject.
+        assert!(spec_is_simmable("paladin", "notaspec"));
+        assert!(spec_is_simmable("", ""));
     }
 }

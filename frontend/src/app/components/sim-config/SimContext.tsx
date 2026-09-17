@@ -10,11 +10,12 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { FightScenario } from '../../lib/types';
+import { specDisplayName, type FightScenario } from '../../lib/types';
 import type { ActiveRoute } from '../../lib/active-route';
 import { folioSelectionForImport, type OmniumSelection } from '../omnium/omniumSelection';
 import { useOmniumTree } from '../../lib/useOmniumTree';
 import { API_URL } from '../../lib/api';
+import { effectiveSpec, specIsSimmable } from '../../lib/simcDetect';
 import {
   readSessionJson,
   readSessionString,
@@ -68,6 +69,10 @@ interface SimContextType {
   setSimcInput: (v: string) => void;
   /** Whether simcInput has enough content to be worth sending to the server. */
   hasInput: boolean;
+  /** The class/spec SimC can't sim, or `null`. Reads the EFFECTIVE spec, so a
+   *  selected talent loadout that overrides `spec=` is honoured. Gates every
+   *  run button; the backend rejects the same profiles with a 400. */
+  unsimmableSpec: { className: string; spec: string; label: string } | null;
   fightStyle: string;
   setFightStyle: (v: string) => void;
   /** `fightStyle === 'DungeonRoute'` — gates the route control and the controls a
@@ -346,6 +351,15 @@ export function SimProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const hasInput = simcInput.trim().length >= 50;
+
+  const unsimmableSpec = useMemo(() => {
+    const className = simcInput.match(/^(\w+)="/m)?.[1]?.toLowerCase();
+    if (!className) return null;
+    const spec = effectiveSpec(simcInput, selectedTalent);
+    if (!spec || specIsSimmable(className, spec)) return null;
+    // "Holy" alone is ambiguous across classes — always label with the class.
+    return { className, spec, label: `${specDisplayName(spec)} ${specDisplayName(className)}` };
+  }, [simcInput, selectedTalent]);
 
   // Dungeon Route mode: gates the route control and the controls a route overrides.
   const isDungeonRoute = fightStyle === 'DungeonRoute';
@@ -675,6 +689,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
         simcInput,
         setSimcInput,
         hasInput,
+        unsimmableSpec,
         fightStyle,
         setFightStyle,
         isDungeonRoute,

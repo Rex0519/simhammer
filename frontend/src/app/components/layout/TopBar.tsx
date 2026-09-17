@@ -27,7 +27,7 @@ export default function TopBar() {
   const [editValue, setEditValue] = useState('');
   const [showChars, setShowChars] = useState(false);
   const [characters, setCharacters] = useState<SavedCharacter[]>([]);
-  const { simcInput, setSimcInput } = useSimContext();
+  const { simcInput, setSimcInput, unsimmableSpec } = useSimContext();
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -270,6 +270,27 @@ export default function TopBar() {
               : t('layout.pasteSimcExport')}
           </span>
         </button>
+
+        {unsimmableSpec && (
+          <span
+            className="flex items-center gap-1 rounded bg-red-400/10 px-2 py-1 text-[11px] font-medium text-red-400"
+            title={t('validation.unsupportedSpec', { spec: unsimmableSpec.label })}
+          >
+            <svg
+              className="h-3.5 w-3.5 shrink-0"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M8 2L1.5 13h13L8 2z" />
+              <path d="M8 6v3M8 11v.5" />
+            </svg>
+            {t('validation.unsupportedSpecBadge')}
+          </span>
+        )}
 
         {checksumWarning && (
           <span

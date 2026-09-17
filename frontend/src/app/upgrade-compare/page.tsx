@@ -102,7 +102,7 @@ function useUpgradeData(simcInput: string) {
 export default function UpgradeComparePage() {
   const { t, locale } = useLanguage();
   useItemNames();
-  const { simcInput, hasInput } = useSimContext();
+  const { simcInput, hasInput, unsimmableSpec } = useSimContext();
   const [compute, setCompute] = useComputeChoice('upgrade_compare');
 
   const { data, loading } = useUpgradeData(simcInput);
@@ -144,9 +144,10 @@ export default function UpgradeComparePage() {
 
   const validate = useCallback(() => {
     if (!hasInput) return t('validation.simcTooShort');
+    if (unsimmableSpec) return t('validation.unsupportedSpec', { spec: unsimmableSpec.label });
     if (selectedSlots.size === 0) return t('upgradeCompare.selectUpgradeable');
     return null;
-  }, [hasInput, selectedSlots, t]);
+  }, [hasInput, selectedSlots, unsimmableSpec, t]);
 
   const {
     submit: handleSubmit,

@@ -3,7 +3,9 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::handler_prep::{preprocess_simc_input, serialize_combo_metadata_value};
+use super::handler_prep::{
+    preprocess_simc_input, serialize_combo_metadata_value, validate_profile,
+};
 use super::job_spawn::{
     resolve_provider_for_request, submit_profileset_sim, validate_batch, ProfilesetSubmission,
 };
@@ -38,6 +40,10 @@ pub(super) async fn create_droptimizer_sim(
         &req.options.spec_override,
         &req.options.omnium_talents,
     );
+    if let Some(resp) = validate_profile(&simc_input) {
+        return resp;
+    }
+
     let parse_result = addon_parser::parse_simc_input(&simc_input);
     let base_profile = parse_result.base_profile.clone();
 

@@ -2,10 +2,12 @@
 //! combo-count handlers. Extracted to kill the verbatim duplication the
 //! architecture audit (#8) flagged across 5+ handler files.
 
-use serde_json::Value;
+use actix_web::HttpResponse;
+use serde_json::{json, Value};
 use std::collections::HashSet;
 
 use super::simc_input::{apply_omnium_override, apply_spec_override, apply_talent_override};
+use crate::types::class_data;
 
 /// Apply the standard talent-override → spec-override → omnium-override →
 /// talent-normalize chain that every sim handler runs before parsing the simc
@@ -21,6 +23,43 @@ pub(super) fn preprocess_simc_input(
         omnium,
     );
     crate::talent_normalize::normalize_simc_talents(&with_overrides)
+}
+
+/// Why this profile can't be simmed, or `None` when it can. Run on the
+/// PREPROCESSED input so a spec override has already been applied — a Holy
+/// Paladin running a Retribution loadout sims fine and must not be rejected.
+///
+/// A missing `spec=` line is not a rejection: `armory_to_simc` omits it when the
+/// loadout code won't decode, and SimC falls back to a default spec.
+pub(super) fn profile_rejection(simc_input: &str) -> Option<String> {
+    let class = match class_data::detect_class(simc_input) {
+        Some(c) => c,
+        None => {
+            return Some(
+                "This doesn't look like a SimC export. Copy your profile from the \
+                 SimC addon with /simc and paste the whole thing."
+                    .to_string(),
+            )
+        }
+    };
+    let spec = class_data::detect_spec(simc_input)?;
+    if class_data::spec_is_simmable(&class, &spec) {
+        return None;
+    }
+    Some(format!(
+        "SimulationCraft has no damage rotation for {} {}, so it can't be simulated.",
+        class_data::title_case(&spec.replace('_', " ")),
+        class_data::title_case(&class.replace('_', " ")),
+    ))
+}
+
+/// Guard for every handler that accepts an addon export: 400 before a Job row
+/// exists, so an unsimmable profile never leaves an orphan Pending job.
+/// Handlers skip this when `raw` is set — Advanced is the expert escape hatch
+/// and its input is not an addon export.
+pub(super) fn validate_profile(simc_input: &str) -> Option<HttpResponse> {
+    let detail = profile_rejection(simc_input)?;
+    Some(HttpResponse::BadRequest().json(json!({ "detail": detail })))
 }
 
 /// Clamp a client-requested max-combinations against the server-configured cap.
@@ -152,5 +191,75 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].0, "Combo 2");
         assert!(out[0].1.contains("\"slot\":\"head\""));
+    }
+
+    #[test]
+    fn a_profile_without_a_class_line_is_rejected() {
+        let msg = profile_rejection("hello world\nthis is not a profile").unwrap();
+        assert!(msg.contains("SimC export"), "message was: {msg}");
+    }
+
+    #[test]
+    fn a_healing_spec_simc_rejects_is_named_in_the_message() {
+        let input = "paladin=\"Colite\"\nlevel=90\nspec=holy\nhead=,id=271465\n";
+        let msg = profile_rejection(input).unwrap();
+        assert!(msg.contains("Holy Paladin"), "message was: {msg}");
+    }
+
+    #[test]
+    fn every_simc_rejected_spec_is_caught() {
+        for (class, spec) in [
+            ("paladin", "holy"),
+            ("priest", "discipline"),
+            ("priest", "holy"),
+            ("monk", "mistweaver"),
+            ("evoker", "preservation"),
+        ] {
+            let input = format!("{class}=\"T\"\nlevel=90\nspec={spec}\n");
+            assert!(
+                profile_rejection(&input).is_some(),
+                "{class}/{spec} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn restoration_specs_are_accepted() {
+        // SimC sims both as DPS actors; blocking them would be a regression.
+        assert_eq!(
+            profile_rejection("druid=\"T\"\nlevel=90\nspec=restoration\n"),
+            None
+        );
+        assert_eq!(
+            profile_rejection("shaman=\"T\"\nlevel=90\nspec=restoration\n"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_spec_override_to_a_simmable_spec_is_accepted() {
+        // A Holy Paladin who picks a Retribution loadout submits a sim that
+        // works — the gate must read the post-override profile.
+        let raw = "paladin=\"Colite\"\nlevel=90\nspec=holy\n";
+        assert!(profile_rejection(raw).is_some());
+        let overridden = preprocess_simc_input(raw, "", "retribution", "");
+        assert_eq!(profile_rejection(&overridden), None);
+    }
+
+    #[test]
+    fn a_profile_without_a_spec_line_is_accepted() {
+        // armory_to_simc omits spec= when the loadout code won't decode. SimC
+        // picks a default spec; that is not grounds to reject the profile.
+        assert_eq!(
+            profile_rejection("hunter=\"T\"\nlevel=90\nhead=,id=1\n"),
+            None
+        );
+    }
+
+    #[test]
+    fn validate_profile_rejects_with_a_400() {
+        let resp = validate_profile("paladin=\"T\"\nspec=holy\n").unwrap();
+        assert_eq!(resp.status(), actix_web::http::StatusCode::BAD_REQUEST);
+        assert!(validate_profile("hunter=\"T\"\nspec=survival\n").is_none());
     }
 }

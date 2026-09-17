@@ -47,6 +47,14 @@ pub(super) async fn create_sim(
         inject_expert_fields(&preprocessed, &req.options)
     };
 
+    // Raw is the Advanced-page escape hatch: its input is a hand-written SimC
+    // file, not an addon export, so the profile gate doesn't apply.
+    if !req.raw {
+        if let Some(resp) = super::handler_prep::validate_profile(&simc_input) {
+            return resp;
+        }
+    }
+
     if let Some(resp) = validate_batch(&req.options.batch_id, repo.get_ref()).await {
         return resp;
     }

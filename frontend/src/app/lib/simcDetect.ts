@@ -1,3 +1,6 @@
+import { decodeHeader } from './talentDecode';
+import { SPEC_ID_TO_NAME } from './classSpecs';
+
 /** Adler-32 matching the SimC addon. The Lua addon processes raw UTF-8 bytes, so we do too. */
 function adler32(s: string): number {
   const prime = 65521;
@@ -103,4 +106,43 @@ export function hasSimcChanged(oldSimc: string, newSimc: string): boolean {
       .join('\n');
 
   return normalize(oldSimc) !== normalize(newSimc);
+}
+
+/** Class/spec pairs the SimC engine rejects at init, leaving the sim with no
+ *  actor. Mirrors UNSIMMABLE_SPECS in backend/core/src/types/class_data.rs —
+ *  test-simc-validation.cjs asserts the two lists stay in step.
+ *
+ *  Not derived from role: SimC sims Restoration Druid and Restoration Shaman as
+ *  DPS actors, so they are deliberately absent. */
+export const UNSIMMABLE_SPECS: [string, string][] = [
+  ['paladin', 'holy'],
+  ['priest', 'discipline'],
+  ['priest', 'holy'],
+  ['monk', 'mistweaver'],
+  ['evoker', 'preservation'],
+];
+
+/** Whether SimC can produce a result for this class/spec pair. Unknown pairs are
+ *  simmable: the gate rejects only what SimC is known to reject. */
+export function specIsSimmable(className: string, spec: string): boolean {
+  const c = className.toLowerCase();
+  const s = spec.toLowerCase();
+  return !UNSIMMABLE_SPECS.some(([uc, us]) => uc === c && us === s);
+}
+
+/** Spec encoded in a talent loadout string, or '' when it won't decode. */
+export function specFromTalentString(talentString: string): string {
+  if (!talentString) return '';
+  try {
+    return SPEC_ID_TO_NAME[decodeHeader(talentString).specId] ?? '';
+  } catch {
+    return '';
+  }
+}
+
+/** The spec the backend will actually sim: a selected talent loadout rewrites
+ *  `spec=` (see apply_spec_override), so a Holy Paladin on a Retribution
+ *  loadout sims as Retribution. Falls back to the profile's own spec= line. */
+export function effectiveSpec(simcInput: string, selectedTalent: string): string {
+  return specFromTalentString(selectedTalent) || (simcInput.match(/^spec=(\w+)/m)?.[1] ?? '');
 }

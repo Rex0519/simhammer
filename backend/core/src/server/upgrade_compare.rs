@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::handler_prep::{preprocess_simc_input, serialize_combo_metadata_vec};
+use super::handler_prep::{preprocess_simc_input, serialize_combo_metadata_vec, validate_profile};
 use super::job_spawn::{
     resolve_provider_for_request, submit_profileset_sim, validate_batch, ProfilesetSubmission,
 };
@@ -390,6 +390,10 @@ pub(super) async fn create_upgrade_compare_sim(
         &req.options.spec_override,
         &req.options.omnium_talents,
     );
+
+    if let Some(resp) = validate_profile(&simc_input) {
+        return resp;
+    }
 
     let prepared = match prepare_upgrade_compare(&simc_input, &req.selected_slots) {
         Ok(v) => v,

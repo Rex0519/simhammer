@@ -133,6 +133,7 @@ export default function TopGearScreen() {
     fightStyle,
     targetCount,
     fightLength,
+    unsimmableSpec,
   } = useSimContext();
   const omniumTree = useOmniumTree();
   // The folio the character was exported with: the picker's starting point, the
@@ -824,8 +825,9 @@ export default function TopGearScreen() {
 
   const validate = useCallback(() => {
     if (!resolved) return t('validation.noGearResolved');
+    if (unsimmableSpec) return t('validation.unsupportedSpec', { spec: unsimmableSpec.label });
     return null;
-  }, [resolved, t]);
+  }, [resolved, unsimmableSpec, t]);
 
   const saveState = useCallback(() => {
     storeTopGearState({

@@ -31,11 +31,13 @@ function DropFinderFooter({
   onComputeChange,
 }: DropFinderFooterProps) {
   const { t } = useLanguage();
+  const { unsimmableSpec } = useSimContext();
 
   const validate = useCallback(() => {
     if (!hasSelection) return t('validation.selectItems');
+    if (unsimmableSpec) return t('validation.unsupportedSpec', { spec: unsimmableSpec.label });
     return null;
-  }, [hasSelection, t]);
+  }, [hasSelection, unsimmableSpec, t]);
 
   const {
     submit: handleSubmit,

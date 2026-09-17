@@ -4,7 +4,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::handler_prep::{
-    capped_max_combinations, preprocess_simc_input, serialize_combo_metadata_vec, socketed_item_ids,
+    capped_max_combinations, preprocess_simc_input, serialize_combo_metadata_vec,
+    socketed_item_ids, validate_profile,
 };
 use super::job_spawn::{
     resolve_provider_for_request, submit_profileset_sim, validate_batch, ProfilesetSubmission,
@@ -96,6 +97,10 @@ pub(super) async fn create_top_gear_sim(
         &req.options.spec_override,
         &req.options.omnium_talents,
     );
+
+    if let Some(resp) = validate_profile(&simc_input) {
+        return resp;
+    }
 
     let parse_result = addon_parser::parse_simc_input(&simc_input);
     let currency_id_sim = crate::item_db::catalyst_currency_id();

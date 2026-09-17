@@ -54,7 +54,7 @@ function useLastSim(name: string | null, realm: string | null): LastSim | null {
 }
 
 export default function QuickSimPage() {
-  const { simcInput, hasInput, statWeights } = useSimContext();
+  const { simcInput, hasInput, statWeights, unsimmableSpec } = useSimContext();
   const { t } = useLanguage();
   const [compute, setCompute] = useComputeChoice('quick');
 
@@ -91,8 +91,9 @@ export default function QuickSimPage() {
 
   const validate = useCallback(() => {
     if (!hasInput) return t('validation.simcTooShort');
+    if (unsimmableSpec) return t('validation.unsupportedSpec', { spec: unsimmableSpec.label });
     return null;
-  }, [hasInput, t]);
+  }, [hasInput, unsimmableSpec, t]);
 
   const { submit, submitting, error, buttonLabel } = useSimSubmit({
     endpoint: '/api/sim',
