@@ -113,6 +113,15 @@ export function buildBestGearSet(
     return gearSet;
   }
 
+  // SimC's gear report omits stat-less items (`gear_to_json` skips !has_stats),
+  // so a worn pure-effect trinket never reaches `equippedGear`; the combo's kept
+  // row still carries it.
+  for (const item of selectedResult.items) {
+    if (!item.type && item.is_kept && item.slot && item.item_id > 0 && !gearSet[item.slot]) {
+      gearSet[item.slot] = { ...item };
+    }
+  }
+
   for (const item of selectedResult.items) {
     if (item.type) {
       continue;

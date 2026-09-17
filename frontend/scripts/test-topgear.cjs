@@ -149,6 +149,7 @@ const {
   collectGemIds,
   appliedGems,
   dedupeEncounterResults,
+  buildBestGearSet,
 } = require('../src/app/components/gear/topGearResultsUtils.ts');
 
 let nextItemId = 1;
@@ -419,4 +420,44 @@ test('results without an encounter are left out of the summary', () => {
     rows.map((row) => row.encounter),
     ['Boss']
   );
+});
+
+// SimC's JSON gear report skips any item whose `has_stats()` is false, so a worn
+// stat-less trinket (Mindpiercer's Sigil, Unyielding Netherprism) is absent from
+// `equipped_gear` and its tile rendered Empty.
+const keptSigil = { slot: 'trinket2', item_id: 250224, ilevel: 675, name: 'sigil', is_kept: true };
+
+test('a kept item missing from the gear report falls back to its combo row', () => {
+  const equipped = { trinket1: { slot: 'trinket1', item_id: 111, ilevel: 675, name: 'flask' } };
+  const gearSet = buildBestGearSet(equipped, { items: [keptSigil] });
+  assert.equal(gearSet.trinket2?.item_id, 250224);
+  assert.equal(gearSet.trinket1?.item_id, 111);
+});
+
+test('the gear report still wins for a slot it does report', () => {
+  const equipped = { trinket2: { slot: 'trinket2', item_id: 222, ilevel: 680, name: 'reported' } };
+  const gearSet = buildBestGearSet(equipped, { items: [keptSigil] });
+  assert.equal(gearSet.trinket2.item_id, 222);
+});
+
+test('a swapped item outranks the kept fallback for the same slot', () => {
+  const swapped = { slot: 'trinket2', item_id: 333, ilevel: 690, name: 'drop' };
+  const gearSet = buildBestGearSet({}, { items: [keptSigil, swapped] });
+  assert.equal(gearSet.trinket2.item_id, 333);
+  // Order must not matter: the kept row only ever fills a hole.
+  const reversed = buildBestGearSet({}, { items: [swapped, keptSigil] });
+  assert.equal(reversed.trinket2.item_id, 333);
+});
+
+test('the fallback never resurrects the off_hand a two-hander empties', () => {
+  const keptOffHand = { slot: 'off_hand', item_id: 444, ilevel: 675, name: 'shield', is_kept: true };
+  const synthetic = { slot: 'off_hand', item_id: 0, ilevel: 0, name: '', origin: 'system' };
+  const gearSet = buildBestGearSet({}, { items: [keptOffHand, synthetic] });
+  assert.equal(gearSet.off_hand, undefined);
+});
+
+test('gem and enchant rows are not mistaken for kept gear', () => {
+  const gem = { slot: 'trinket2', type: 'gem', gem_id: 5, item_id: 250224, is_kept: true };
+  const gearSet = buildBestGearSet({}, { items: [gem] });
+  assert.equal(gearSet.trinket2, undefined);
 });
