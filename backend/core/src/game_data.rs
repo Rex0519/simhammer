@@ -959,35 +959,18 @@ mod season_filter_tests {
         assert_eq!(checked, 9, "expected 9 bosses across this season's raids");
     }
 
-    /// A drop the game data gives no stats and no on-use effect sims at exactly
-    /// the DPS of an empty slot, and SimC leaves it out of its gear report, so
-    /// the payload has to say so rather than let a zero read as a bad item.
+    /// The flag has to survive into the drop payload, not just the item DB.
     #[test]
     fn statless_drops_are_published_with_no_sim_value() {
         ensure_game_data_loaded();
         let drops = get_instance_drops(1313, None, None, true).expect("instance 1313 drops");
-        let rows: Vec<&Value> = drops
+        let sigil = drops
             .values()
             .filter_map(|v| v.as_array())
             .flatten()
-            .collect();
-
-        let sigil = rows
-            .iter()
             .find(|i| i.get("item_id").and_then(|v| v.as_u64()) == Some(250224))
             .expect("Mindpiercer's Sigil drops here");
         assert_eq!(sigil["no_sim_value"], serde_json::json!(true));
-
-        // Every other drop in the instance has stats, so none of them carry it.
-        let flagged: Vec<u64> = rows
-            .iter()
-            .filter(|i| i.get("no_sim_value").is_some())
-            .filter_map(|i| i.get("item_id").and_then(|v| v.as_u64()))
-            .collect();
-        assert!(
-            flagged.iter().all(|id| *id == 250224 || *id == 250244),
-            "unexpected items flagged: {flagged:?}"
-        );
     }
 
     /// Mythic loot from the last two Venomous Abyss bosses is Myth 9/6 (344),

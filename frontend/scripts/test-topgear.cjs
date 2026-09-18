@@ -422,9 +422,7 @@ test('results without an encounter are left out of the summary', () => {
   );
 });
 
-// SimC's JSON gear report skips any item whose `has_stats()` is false, so a worn
-// stat-less trinket (Mindpiercer's Sigil, Unyielding Netherprism) is absent from
-// `equipped_gear` and its tile rendered Empty.
+// A worn stat-less trinket is absent from `equipped_gear` — see buildBestGearSet.
 const keptSigil = { slot: 'trinket2', item_id: 250224, ilevel: 675, name: 'sigil', is_kept: true };
 
 test('a kept item missing from the gear report falls back to its combo row', () => {

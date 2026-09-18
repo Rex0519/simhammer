@@ -56,7 +56,7 @@ static DROPS_BY_ENCOUNTER: OnceCell<HashMap<i64, Vec<Value>>> = OnceCell::new();
 /// Raid encounter IDs a bonus roll can be spent on (from bonus-roll-sources).
 /// Raid trash has no bonus roll, so it never appears here.
 static BONUS_ROLL_RAID_ENCOUNTERS: OnceCell<HashSet<i64>> = OnceCell::new();
-/// Drops the game data gives no stat block at all.
+/// Equippable drops the game data gives no stat block.
 static STATLESS_DROPS: OnceCell<HashSet<u64>> = OnceCell::new();
 /// Base gem-socket count per item_id (from encounter-items `socketInfo`).
 static BASE_SOCKETS_BY_ITEM: OnceCell<HashMap<u64, u64>> = OnceCell::new();
@@ -437,29 +437,20 @@ pub fn load(data_dir: &Path) -> Result<(), String> {
                         inherent_bonuses.insert(id, ids);
                     }
                 }
-                if item
-                    .get("stats")
-                    .and_then(|v| v.as_array())
-                    .is_some_and(|a| {
-                        a.iter().any(|st| {
-                            matches!(st.get("id").and_then(|v| v.as_u64()), Some(24) | Some(25))
-                        })
+                let stats = item.get("stats").and_then(|v| v.as_array());
+                if stats.is_some_and(|a| {
+                    a.iter().any(|st| {
+                        matches!(st.get("id").and_then(|v| v.as_u64()), Some(24) | Some(25))
                     })
-                {
+                }) {
                     flexible_stat_items.insert(id);
                 }
-                // Only equippable gear counts. A tier token carries no stats
-                // of its own because its worth is the piece it grants, and it
-                // has no inventory type at all.
-                if item.get("contains").is_none()
-                    && item
-                        .get("inventoryType")
-                        .and_then(|v| v.as_u64())
-                        .is_some_and(|t| t > 0)
-                    && item
-                        .get("stats")
-                        .and_then(|v| v.as_array())
-                        .is_none_or(|a| a.is_empty())
+                // Only equippable gear counts; a tier token has no inventory type.
+                if item
+                    .get("inventoryType")
+                    .and_then(|v| v.as_u64())
+                    .is_some_and(|t| t > 0)
+                    && stats.is_none_or(|a| a.is_empty())
                 {
                     statless_drops.insert(id);
                 }
@@ -1485,8 +1476,7 @@ pub fn is_on_use_trinket(item_id: u64) -> bool {
 /// on-use effect. SimC still equips such an item, but returns a zero delta and
 /// omits it from its gear report entirely (`gear_to_json` skips anything whose
 /// `has_stats()` is false), so the slot renders empty. Read from encounter-items
-/// because compaction strips `stats` from equippable-items-full — which is also
-/// the right scope: a boss drop is how these are obtained.
+/// because compaction strips `stats` from equippable-items-full.
 pub fn has_no_sim_value(item_id: u64) -> bool {
     STATLESS_DROPS
         .get()
@@ -2773,10 +2763,8 @@ mod tests {
             .unwrap_or_default()
     }
 
-    /// SimC equips a stat-less item but values it at exactly an empty slot, and
-    /// leaves it out of its gear report, so the tile renders empty. Measured on
-    /// the 09-12 nightly: 250224 and 250244 come back bit-identical to no
-    /// trinket at all, while 250215 is worth +7.4 DPS.
+    /// Measured on the 09-12 nightly: 250224 and 250244 sim bit-identical to an
+    /// empty trinket slot, while 250215 is worth +7.4 DPS.
     #[test]
     fn only_statless_equippable_drops_have_no_sim_value() {
         crate::test_support::ensure_game_data_loaded();
