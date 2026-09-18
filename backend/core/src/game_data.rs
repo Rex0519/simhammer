@@ -686,6 +686,12 @@ fn build_catalyst_variant(item: &Value, class_id: u64, inv_type: u64) -> Option<
         "accepts_preferred_stats".to_string(),
         Value::Bool(item_db::accepts_preferred_stats(source_item_id)),
     );
+    // The tier piece is a different item with its own stat block, so re-derive
+    // rather than inherit the source's verdict.
+    match item_db::has_no_sim_value(tier.item_id) {
+        true => obj.insert("no_sim_value".to_string(), Value::Bool(true)),
+        false => obj.remove("no_sim_value"),
+    };
     // The conversion re-bases the stats, but a granted effect rides along: the
     // game keeps the source's, as an exported catalysed piece shows (tier legs
     // redirected from Chausses of Unbound Rancor still carry Venomcursed
@@ -971,6 +977,20 @@ mod season_filter_tests {
             .find(|i| i.get("item_id").and_then(|v| v.as_u64()) == Some(250224))
             .expect("Mindpiercer's Sigil drops here");
         assert_eq!(sigil["no_sim_value"], serde_json::json!(true));
+
+        // Over-flagging is the real risk, so pin the negative too. 250244 shares
+        // this instance's pools, so it is the one other row allowed to carry it.
+        let flagged: Vec<u64> = drops
+            .values()
+            .filter_map(|v| v.as_array())
+            .flatten()
+            .filter(|i| i.get("no_sim_value").is_some())
+            .filter_map(|i| i.get("item_id").and_then(|v| v.as_u64()))
+            .collect();
+        assert!(
+            flagged.iter().all(|id| *id == 250224 || *id == 250244),
+            "unexpected items flagged: {flagged:?}"
+        );
     }
 
     /// Mythic loot from the last two Venomous Abyss bosses is Myth 9/6 (344),

@@ -445,11 +445,13 @@ pub fn load(data_dir: &Path) -> Result<(), String> {
                 }) {
                     flexible_stat_items.insert(id);
                 }
-                // Only equippable gear counts; a tier token has no inventory type.
-                if item
-                    .get("inventoryType")
-                    .and_then(|v| v.as_u64())
-                    .is_some_and(|t| t > 0)
+                // Only equippable gear counts, and never a container: a tier
+                // token's worth is the piece it grants, not its own empty stats.
+                if item.get("contains").is_none()
+                    && item
+                        .get("inventoryType")
+                        .and_then(|v| v.as_u64())
+                        .is_some_and(|t| t > 0)
                     && stats.is_none_or(|a| a.is_empty())
                 {
                     statless_drops.insert(id);
@@ -1482,6 +1484,7 @@ pub fn has_no_sim_value(item_id: u64) -> bool {
         .get()
         .is_some_and(|set| set.contains(&item_id))
         && !is_on_use_trinket(item_id)
+        && item_effect_bonus_ids(item_id).is_empty()
 }
 
 pub(crate) fn get_raw_item(item_id: u64) -> Option<&'static Value> {
@@ -2775,6 +2778,10 @@ mod tests {
         // A tier token carries no stats of its own: its worth is the piece it
         // grants, so it must never be flagged.
         assert!(!has_no_sim_value(270910), "Venomwoven Idol");
+        // Ordinary stat-less gear still qualifies: the fishing hat's bonuses are
+        // an item level and a level curve, not effect grants. (No shipped item is
+        // both stat-less and effect-granting, so that exclusion has no fixture.)
+        assert!(has_no_sim_value(239644), "Bright Linen Fishing Hat");
         // Claim nothing for an item we hold no drop data for.
         assert!(!has_no_sim_value(0));
     }
