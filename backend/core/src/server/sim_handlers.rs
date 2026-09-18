@@ -451,6 +451,7 @@ pub(super) async fn sim_row(
             Ok(output) => {
                 let mut parsed = result_parser::parse_simc_result(&output.json);
                 inject_realm(&mut parsed, &input_for_task);
+                result_parser::backfill_equipped_gear(&mut parsed, &input_for_task);
                 inject_total_elapsed(&mut parsed, &created_at_for_task);
                 let result_str = serde_json::to_string(&parsed).unwrap_or_default();
                 let raw_str = serde_json::to_string(&output.json).ok();

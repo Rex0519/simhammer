@@ -1019,6 +1019,7 @@ pub async fn finalize_cloud_result(
     let mut parsed =
         crate::result_parser::parse_gear_comparison_result(merged_json, meta.as_ref(), sim_type);
     crate::jobs::finalize::inject_realm(&mut parsed, base_profile);
+    crate::result_parser::backfill_equipped_gear(&mut parsed, base_profile);
     if let Some(ref snap) = job_snap {
         crate::jobs::finalize::inject_total_elapsed(&mut parsed, &snap.created_at);
     }

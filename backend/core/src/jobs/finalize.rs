@@ -28,6 +28,7 @@ pub async fn finalize_job_outcome(
         Ok(output) => {
             let mut parsed = parse(&output.json);
             inject_realm(&mut parsed, simc_input);
+            crate::result_parser::backfill_equipped_gear(&mut parsed, simc_input);
             let result_str = serde_json::to_string(&parsed).unwrap_or_default();
             let raw_str = serde_json::to_string(&output.json).ok();
             if let Err(e) = repo
@@ -107,6 +108,7 @@ pub(crate) async fn finalize_local_stage_result(
     let mut parsed =
         crate::result_parser::parse_gear_comparison_result(output_json, meta.as_ref(), "top_gear");
     inject_realm(&mut parsed, base_profile);
+    crate::result_parser::backfill_equipped_gear(&mut parsed, base_profile);
     if let Ok(Some(job_snap)) = repo.get(job_id).await {
         inject_total_elapsed(&mut parsed, &job_snap.created_at);
     }
@@ -142,6 +144,7 @@ pub async fn finalize_gear_comparison_result(
             let mut parsed =
                 result_parser::parse_gear_comparison_result(&output.json, meta.as_ref(), sim_type);
             inject_realm(&mut parsed, simc_input);
+            crate::result_parser::backfill_equipped_gear(&mut parsed, simc_input);
             if let Some(ref snap) = job_snap {
                 inject_total_elapsed(&mut parsed, &snap.created_at);
             }

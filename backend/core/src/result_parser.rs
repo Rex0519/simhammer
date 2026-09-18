@@ -1,6 +1,7 @@
 use regex::Regex;
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::OnceLock;
 
 use crate::types::class_data::title_case;
 
@@ -353,6 +354,135 @@ pub fn parse_simc_result(raw: &Value) -> Value {
     result
 }
 
+/// Build one `equipped_gear` entry from a SimC item string (`name,id=...,...`).
+/// `name_hint` and `ilevel_hint` supply what the string itself may omit.
+fn gear_entry(slot: &str, encoded: &str, name_hint: &str, ilevel_hint: u64) -> Value {
+    static ILVL_RE: OnceLock<Regex> = OnceLock::new();
+    let ilvl_re = ILVL_RE.get_or_init(|| Regex::new(r"ilevel=(\d+)").unwrap());
+
+    let item_id = crate::simc_string::extract_item_id(encoded);
+
+    let mut ilevel: u64 = ilvl_re
+        .captures(encoded)
+        .and_then(|c| c[1].parse().ok())
+        .unwrap_or(0);
+    if ilevel == 0 {
+        ilevel = ilevel_hint;
+    }
+
+    let bonus_ids = crate::simc_string::extract_bonus_ids(encoded);
+    let enchant_id = crate::simc_string::extract_enchant_id(encoded);
+    let gem_ids: Vec<u64> = crate::simc_string::extract_gem_ids(encoded)
+        .into_iter()
+        .filter(|&id| id > 0)
+        .collect();
+    let gem_id: u64 = gem_ids.first().copied().unwrap_or(0);
+
+    let name = title_case(&name_hint.replace('_', " "));
+
+    let info = crate::item_db::get_item_info(item_id, Some(&bonus_ids));
+    let sockets = info.as_ref().map(|i| i.sockets).unwrap_or(0);
+    // Armory exports omit `ilevel=` when bonus ids already imply it, so resolve
+    // it from those rather than reporting the item's unupgraded base level.
+    if ilevel == 0 {
+        ilevel = info.as_ref().map(|i| i.ilevel).unwrap_or(0);
+    }
+
+    let source_item_id = crate::simc_string::extract_redirected_base_stats(encoded);
+
+    let mut entry = json!({
+        "slot": slot,
+        "item_id": item_id,
+        "ilevel": ilevel,
+        "name": name,
+        "bonus_ids": bonus_ids,
+        "enchant_id": enchant_id,
+        "gem_id": gem_id,
+        "gem_ids": gem_ids,
+        "sockets": sockets,
+        "is_kept": true,
+    });
+    if source_item_id > 0 {
+        entry["source_item_id"] = json!(source_item_id);
+    }
+    entry
+}
+
+/// Fill `equipped_gear` holes from the profile we sent.
+///
+/// SimC's gear report skips any item whose `has_stats()` is false (`gear_to_json`
+/// in report_json.cpp), and such an item appears nowhere else in its output, so a
+/// worn stat-less piece is simply absent from the result and its slot renders
+/// empty. The profile is the only surviving record of it.
+///
+/// Only slots SimC left out are touched, and only when we actually sent an item
+/// id for them, so anything SimC did report always wins.
+pub(crate) fn backfill_equipped_gear(parsed: &mut Value, simc_input: &str) {
+    static GEAR_RE: OnceLock<Regex> = OnceLock::new();
+    let gear_re = GEAR_RE.get_or_init(|| {
+        Regex::new(&format!(
+            r"^({})=(.*)",
+            crate::types::class_data::GEAR_SLOTS.join("|")
+        ))
+        .unwrap()
+    });
+
+    let reported: HashSet<String> = parsed
+        .get("equipped_gear")
+        .and_then(|g| g.as_object())
+        .map(|o| o.keys().cloned().collect())
+        .unwrap_or_default();
+
+    // A later line overrides an earlier one and `slot=,` clears the slot — re-running
+    // one Top Gear row appends the combo's overrides after the original gear, so a
+    // two-hander row really does emit `off_hand=,` after an off-hand line.
+    let mut latest: HashMap<String, Option<Value>> = HashMap::new();
+    let mut actors_seen = 0usize;
+    for line in simc_input.lines() {
+        let trimmed = line.trim();
+        // The result describes players[0], but raw input may declare several
+        // actors; anything past the first one is a different character's gear.
+        if crate::types::class_data::class_line_character(trimmed).is_some() {
+            actors_seen += 1;
+            if actors_seen > 1 {
+                break;
+            }
+            continue;
+        }
+        let Some(caps) = gear_re.captures(trimmed) else {
+            continue;
+        };
+        let slot = caps[1].to_lowercase();
+        if reported.contains(&slot) {
+            continue;
+        }
+        let encoded = &caps[2];
+        if crate::simc_string::extract_item_id(encoded) == 0 {
+            latest.insert(slot, None);
+            continue;
+        }
+        // The profile carries a tokenized name ahead of the first comma; the
+        // item level is left to the item DB when the line omits it.
+        let name_hint = encoded.split(',').next().unwrap_or("");
+        latest.insert(slot.clone(), Some(gear_entry(&slot, encoded, name_hint, 0)));
+    }
+
+    let missing: Vec<(String, Value)> = latest
+        .into_iter()
+        .filter_map(|(slot, entry)| entry.map(|e| (slot, e)))
+        .collect();
+    if missing.is_empty() {
+        return;
+    }
+    if !parsed["equipped_gear"].is_object() {
+        parsed["equipped_gear"] = json!({});
+    }
+    let gear = parsed["equipped_gear"].as_object_mut().unwrap();
+    for (slot, entry) in missing {
+        gear.insert(slot, entry);
+    }
+}
+
 fn extract_all_gear(player: &Value) -> HashMap<String, Value> {
     let empty = json!({});
     let gear = player.get("gear").unwrap_or(&empty);
@@ -360,8 +490,6 @@ fn extract_all_gear(player: &Value) -> HashMap<String, Value> {
         Some(o) => o,
         None => return HashMap::new(),
     };
-
-    let ilvl_re = Regex::new(r"ilevel=(\d+)").unwrap();
 
     let mut baseline: HashMap<String, Value> = HashMap::new();
 
@@ -378,54 +506,11 @@ fn extract_all_gear(player: &Value) -> HashMap<String, Value> {
             .and_then(|e| e.as_str())
             .unwrap_or("");
 
-        let item_id = crate::simc_string::extract_item_id(encoded);
+        let name_hint = data.get("name").and_then(|n| n.as_str()).unwrap_or("");
+        let ilevel_hint = data.get("ilevel").and_then(|i| i.as_u64()).unwrap_or(0);
 
-        let mut ilevel: u64 = ilvl_re
-            .captures(encoded)
-            .and_then(|c| c[1].parse().ok())
-            .unwrap_or(0);
-
-        if ilevel == 0 {
-            ilevel = data.get("ilevel").and_then(|i| i.as_u64()).unwrap_or(0);
-        }
-
-        let bonus_ids = crate::simc_string::extract_bonus_ids(encoded);
-        let enchant_id = crate::simc_string::extract_enchant_id(encoded);
-        let gem_ids: Vec<u64> = crate::simc_string::extract_gem_ids(encoded)
-            .into_iter()
-            .filter(|&id| id > 0)
-            .collect();
-        let gem_id: u64 = gem_ids.first().copied().unwrap_or(0);
-
-        let name = data
-            .get("name")
-            .and_then(|n| n.as_str())
-            .unwrap_or("")
-            .replace('_', " ");
-        let name = title_case(&name);
-
-        let sockets = crate::item_db::get_item_info(item_id, Some(&bonus_ids))
-            .map(|info| info.sockets)
-            .unwrap_or(0);
-
-        let source_item_id = crate::simc_string::extract_redirected_base_stats(encoded);
-
-        let mut entry = json!({
-            "slot": &slot,
-            "item_id": item_id,
-            "ilevel": ilevel,
-            "name": name,
-            "bonus_ids": bonus_ids,
-            "enchant_id": enchant_id,
-            "gem_id": gem_id,
-            "gem_ids": gem_ids,
-            "sockets": sockets,
-            "is_kept": true,
-        });
-        if source_item_id > 0 {
-            entry["source_item_id"] = json!(source_item_id);
-        }
-        baseline.insert(slot.clone(), entry);
+        let entry = gear_entry(&slot, encoded, name_hint, ilevel_hint);
+        baseline.insert(slot, entry);
     }
 
     baseline
@@ -830,5 +915,171 @@ mod baseline_gear_tests {
         assert_eq!(gear["head"]["source_item_id"], 249629);
         assert!(gear["head"].get("is_catalyst").is_none());
         assert!(gear["neck"].get("source_item_id").is_none());
+    }
+}
+
+#[cfg(test)]
+mod backfill_tests {
+    use super::*;
+    use crate::test_support::ensure_game_data_loaded;
+
+    /// SimC omits a stat-less item from its gear report and mentions it nowhere
+    /// else, so the profile we sent is the only record of it.
+    const PROFILE: &str = "\
+warlock=T
+head=helm,id=250042,bonus_id=12849
+trinket1=freightrunners_flask,id=250215
+trinket2=mindpiercers_sigil,id=250224
+off_hand=
+";
+
+    fn reported_only_two_slots() -> Value {
+        json!({
+            "equipped_gear": {
+                "head": { "slot": "head", "item_id": 250042, "name": "Helm" },
+                "trinket1": { "slot": "trinket1", "item_id": 250215, "name": "Flask" }
+            }
+        })
+    }
+
+    #[test]
+    fn fills_a_slot_simc_left_out_of_its_gear_report() {
+        ensure_game_data_loaded();
+        let mut parsed = reported_only_two_slots();
+        backfill_equipped_gear(&mut parsed, PROFILE);
+
+        let sigil = &parsed["equipped_gear"]["trinket2"];
+        assert_eq!(sigil["item_id"], 250224);
+        assert_eq!(sigil["slot"], "trinket2");
+        assert_eq!(sigil["name"], "Mindpiercers Sigil");
+        assert_eq!(sigil["is_kept"], true);
+        // The profile carries no ilevel=, so the item DB supplies it.
+        assert!(sigil["ilevel"].as_u64().unwrap_or(0) > 0);
+    }
+
+    #[test]
+    fn never_overwrites_a_slot_simc_did_report() {
+        ensure_game_data_loaded();
+        let mut parsed = reported_only_two_slots();
+        backfill_equipped_gear(&mut parsed, PROFILE);
+        assert_eq!(parsed["equipped_gear"]["trinket1"]["name"], "Flask");
+        assert_eq!(parsed["equipped_gear"]["head"]["name"], "Helm");
+    }
+
+    #[test]
+    fn an_empty_slot_line_adds_nothing() {
+        ensure_game_data_loaded();
+        let mut parsed = reported_only_two_slots();
+        backfill_equipped_gear(&mut parsed, PROFILE);
+        assert!(parsed["equipped_gear"].get("off_hand").is_none());
+    }
+
+    #[test]
+    fn builds_the_map_when_the_result_has_no_gear_at_all() {
+        ensure_game_data_loaded();
+        let mut parsed = json!({});
+        backfill_equipped_gear(&mut parsed, PROFILE);
+        let gear = parsed["equipped_gear"].as_object().expect("gear map");
+        assert_eq!(
+            gear.len(),
+            3,
+            "head + both trinkets, never the empty off_hand"
+        );
+    }
+
+    /// Bonus ids, enchants and gems have to survive, or the restored tile would
+    /// show the wrong item level and no gems.
+    #[test]
+    fn carries_bonus_enchant_and_gem_detail_across() {
+        ensure_game_data_loaded();
+        let mut parsed = json!({ "equipped_gear": {} });
+        backfill_equipped_gear(
+            &mut parsed,
+            "neck=amulet,id=100,bonus_id=12/34,enchant_id=7364,gem_id=213743/213743,ilevel=678\n",
+        );
+        let neck = &parsed["equipped_gear"]["neck"];
+        assert_eq!(neck["ilevel"], 678);
+        assert_eq!(neck["bonus_ids"], json!([12, 34]));
+        assert_eq!(neck["enchant_id"], 7364);
+        assert_eq!(neck["gem_ids"], json!([213743, 213743]));
+        assert_eq!(neck["gem_id"], 213743);
+    }
+
+    /// The generated input carries a combo's gear on `profileset."x"+=` lines and
+    /// user edits on `# manual.` comments. Only the character's own gear lines,
+    /// which start at column zero, describe what was equipped.
+    #[test]
+    fn ignores_profileset_and_comment_lines() {
+        ensure_game_data_loaded();
+        let mut parsed = json!({ "equipped_gear": {} });
+        backfill_equipped_gear(
+            &mut parsed,
+            "trinket2=mindpiercers_sigil,id=250224\n\
+             profileset.\"A\"+=trinket1=,id=999999\n\
+             # manual.feet=,id=888888\n",
+        );
+        let gear = parsed["equipped_gear"].as_object().expect("gear map");
+        // Each ignored line names a slot nothing else fills, so a false match
+        // here cannot be masked by a later real line.
+        assert_eq!(gear.len(), 1, "only the real gear line: {gear:?}");
+        assert_eq!(gear["trinket2"]["item_id"], 250224);
+    }
+
+    /// Re-running one Top Gear row appends the combo's overrides to the original
+    /// profile, so a two-hander emits `off_hand=,` after the original off-hand.
+    /// SimC leaves the slot empty and the backfill must not put it back.
+    #[test]
+    fn an_override_that_empties_a_slot_beats_the_earlier_line() {
+        ensure_game_data_loaded();
+        let mut parsed = json!({ "equipped_gear": {} });
+        backfill_equipped_gear(&mut parsed, "off_hand=shield,id=250215\noff_hand=,\n");
+        assert!(
+            parsed["equipped_gear"].get("off_hand").is_none(),
+            "the cleared slot must stay empty: {:?}",
+            parsed["equipped_gear"]
+        );
+    }
+
+    #[test]
+    fn a_later_override_for_the_same_slot_wins() {
+        ensure_game_data_loaded();
+        let mut parsed = json!({ "equipped_gear": {} });
+        backfill_equipped_gear(&mut parsed, "trinket2=,id=250215\ntrinket2=,id=250224\n");
+        assert_eq!(parsed["equipped_gear"]["trinket2"]["item_id"], 250224);
+    }
+
+    /// `parse_simc_result` reports players[0]; raw input can declare more actors
+    /// and their gear must not leak into the first one's set.
+    #[test]
+    fn stops_at_the_second_actor() {
+        ensure_game_data_loaded();
+        let mut parsed = json!({ "equipped_gear": {} });
+        backfill_equipped_gear(
+            &mut parsed,
+            "warlock=\"A\"\n\
+             trinket2=mindpiercers_sigil,id=250224\n\
+             mage=\"B\"\n\
+             head=,id=250042\n",
+        );
+        let gear = parsed["equipped_gear"].as_object().expect("gear map");
+        assert_eq!(gear.len(), 1, "only actor A's gear: {gear:?}");
+        assert_eq!(gear["trinket2"]["item_id"], 250224);
+    }
+
+    /// An armory export omits `ilevel=` when the bonus ids already imply it.
+    #[test]
+    fn resolves_the_item_level_from_the_bonus_ids() {
+        ensure_game_data_loaded();
+        let mut parsed = json!({ "equipped_gear": {} });
+        backfill_equipped_gear(&mut parsed, "trinket2=,id=250224,bonus_id=12849\n");
+
+        let upgraded = crate::item_db::get_item_info(250224, Some(&[12849]))
+            .map(|i| i.ilevel)
+            .unwrap_or(0);
+        let base = crate::item_db::get_item_info(250224, None)
+            .map(|i| i.ilevel)
+            .unwrap_or(0);
+        assert!(upgraded > base, "fixture must actually upgrade the item");
+        assert_eq!(parsed["equipped_gear"]["trinket2"]["ilevel"], upgraded);
     }
 }
