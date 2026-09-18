@@ -176,8 +176,6 @@
   "gear.socket": "Châsse",
   "gear.sockets": "Châsses",
   "gear.empty": "Vide",
-  "gear.noSimValue": "Aucune valeur en sim",
-  "gear.noSimValueReason": "Les données du jeu ne donnent aucune statistique à cet objet, la sim le valorise donc à zéro.",
   "gear.upgrade": "Améliorer",
   "gear.downgrade": "Rétrograder",
   "gear.resultsCount": "{count} résultats",

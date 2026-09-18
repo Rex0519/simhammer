@@ -176,8 +176,6 @@
   "gear.socket": "Engaste",
   "gear.sockets": "Engastes",
   "gear.empty": "Vacío",
-  "gear.noSimValue": "Sin valor en sim",
-  "gear.noSimValueReason": "Los datos del juego no incluyen estadísticas para este objeto, así que la sim lo valora en cero.",
   "gear.upgrade": "Mejorar",
   "gear.downgrade": "Degradar",
   "gear.resultsCount": "{count} resultados",

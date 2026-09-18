@@ -237,8 +237,6 @@
   "gear.socket": "홈",
   "gear.sockets": "홈",
   "gear.empty": "비어 있음",
-  "gear.noSimValue": "시뮬레이션 가치 없음",
-  "gear.noSimValueReason": "게임 데이터에 이 아이템의 능력치가 없어 시뮬레이션에서 0으로 평가됩니다.",
   "gear.upgrade": "업그레이드",
   "gear.downgrade": "다운그레이드",
   "gear.resultsCount": "결과 {count}개",

@@ -176,8 +176,6 @@
   "gear.socket": "Sockel",
   "gear.sockets": "Sockel",
   "gear.empty": "Leer",
-  "gear.noSimValue": "Kein Sim-Wert",
-  "gear.noSimValueReason": "Die Spieldaten enthalten keine Werte für diesen Gegenstand, daher bewertet die Sim ihn mit null.",
   "gear.upgrade": "Aufwertung",
   "gear.downgrade": "Abwertung",
   "gear.resultsCount": "{count} Ergebnisse",

@@ -237,8 +237,6 @@
   "gear.socket": "Socket",
   "gear.sockets": "Sockets",
   "gear.empty": "Empty",
-  "gear.noSimValue": "No sim value",
-  "gear.noSimValueReason": "The game data has no stats for this item, so the sim values it at zero.",
   "gear.upgrade": "Upgrade",
   "gear.downgrade": "Downgrade",
   "gear.resultsCount": "{count} results",

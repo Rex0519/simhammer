@@ -176,8 +176,6 @@
   "gear.socket": "Гнездо",
   "gear.sockets": "Гнёзда",
   "gear.empty": "Пусто",
-  "gear.noSimValue": "Нет ценности для сима",
-  "gear.noSimValueReason": "В игровых данных нет характеристик этого предмета, поэтому сим оценивает его в ноль.",
   "gear.upgrade": "Улучшить",
   "gear.downgrade": "Понизить",
   "gear.resultsCount": "{count} результатов",

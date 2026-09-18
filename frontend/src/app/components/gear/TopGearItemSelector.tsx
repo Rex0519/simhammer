@@ -257,9 +257,6 @@ export default function TopGearItemSelector({
       if (item.is_catalyst) {
         parts.push({ text: t('gear.catalyst'), color: 'text-purple-400/80' });
       }
-      if (item.no_sim_value) {
-        parts.push({ text: t('gear.noSimValue'), color: 'text-rose-300/90' });
-      }
       if (item.tag) parts.push({ text: item.tag });
       if (item.upgrade) parts.push({ text: localizedUpgrade(item.upgrade, t) });
       if (item.gem_name) {

@@ -176,8 +176,6 @@
   "gear.socket": "Incavo",
   "gear.sockets": "Incavi",
   "gear.empty": "Vuoto",
-  "gear.noSimValue": "Nessun valore in sim",
-  "gear.noSimValueReason": "I dati di gioco non hanno statistiche per questo oggetto, quindi la sim lo valuta zero.",
   "gear.upgrade": "Potenzia",
   "gear.downgrade": "Declassa",
   "gear.resultsCount": "{count} risultati",

@@ -26,7 +26,6 @@ export interface LootItemRowModel {
     is_catalyst?: boolean;
     owned?: boolean;
     from_tier_token?: boolean;
-    no_sim_value?: boolean;
   };
   /** Catalyst rows only: the converted item, whose secondaries the result keeps. */
   catalystSource?: string;
@@ -84,7 +83,6 @@ export function buildLootItemRow(
       is_catalyst: item.is_catalyst,
       owned: context.owned,
       from_tier_token: item.from_tier_token,
-      no_sim_value: item.no_sim_value,
     },
     catalystSource:
       item.is_catalyst && item.source_item_id && item.source_name
